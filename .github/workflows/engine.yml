@@ -9,6 +9,7 @@ on:
       cflags: { description: 'extra C flags', default: '' }
       ldflags: { description: 'extra link flags', default: '' }
       meson: { description: 'extra meson options', default: '' }
+      patches: { description: 'space-separated ivm/inferno/patches/exp/<name>.py to apply', default: '' }
       pgo_art: { description: 'artifact with pgo/*.profraw to merge + -fprofile-use (empty = none)', default: '' }
       ivm_ref: { default: 'main' }
 permissions: { actions: read, contents: read }
@@ -35,7 +36,7 @@ jobs:
           echo "IVM_PROFDATA=$GITHUB_WORKSPACE/ivm.profdata" >> "$GITHUB_ENV"
       - name: cross-build
         working-directory: ivm-repo
-        env: { INFERNO_COMMIT: '${{ inputs.commit }}', IVM_OPT_CFLAGS: '${{ inputs.cflags }}', IVM_LDFLAGS: '${{ inputs.ldflags }}', IVM_MESON_EXTRA: '${{ inputs.meson }}' }
+        env: { INFERNO_COMMIT: '${{ inputs.commit }}', IVM_OPT_CFLAGS: '${{ inputs.cflags }}', IVM_LDFLAGS: '${{ inputs.ldflags }}', IVM_MESON_EXTRA: '${{ inputs.meson }}', IVM_PATCHES: '${{ inputs.patches }}' }
         run: bash ivm/android/ci/build-inferno-android.sh 2>&1 | tee native.log; test "${PIPESTATUS[0]}" = 0
       - uses: actions/upload-artifact@v4
         if: always()
