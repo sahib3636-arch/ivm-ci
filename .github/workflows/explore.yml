@@ -30,6 +30,8 @@ jobs:
           PERF: '${{ matrix.v.perf || ''off'' }}'
           PGO: '${{ matrix.v.pgo || ''off'' }}'
           RUNS: '${{ matrix.v.runs || 1 }}'
+          HUNT: '${{ matrix.v.hunt || 0 }}'
+          HUNT_SECS: '${{ matrix.v.hunt_secs || 40 }}'
         run: sudo -E bash ivm-repo/ivm/bench/explore-arm.sh
       - uses: actions/upload-artifact@v4
         if: always()
@@ -42,3 +44,4 @@ jobs:
             ivm-repo/bench-out/**/*.txt
             ivm-repo/bench-out/*.md
             ivm-repo/bench-out/pgo/*.profraw
+            ivm-repo/bench-out/*.txt
