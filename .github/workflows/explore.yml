@@ -34,6 +34,7 @@ jobs:
           HUNT_SECS: '${{ matrix.v.hunt_secs || 40 }}'
           TASKSET: '${{ matrix.v.taskset }}'
           ANIM_TASKSET: '${{ matrix.v.anim_taskset }}'
+          TOYBOX_TASKSET: '${{ matrix.v.toybox_taskset }}'
         run: sudo -E bash ivm-repo/ivm/bench/explore-arm.sh
       - uses: actions/upload-artifact@v4
         if: always()
