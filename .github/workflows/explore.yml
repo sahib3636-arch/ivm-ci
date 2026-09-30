@@ -1,0 +1,44 @@
+# Source of truth for ivm-ci/.github/workflows/explore.yml — parallel experiment matrix on free arm64 runners.
+# variants = JSON list of {label, art, smp?, ram?, tb?, machine?, extra?, perf?, pgo?, runs?}
+name: explore
+on:
+  workflow_dispatch:
+    inputs:
+      variants: { description: 'JSON list of variant objects', required: true }
+      ivm_ref: { default: 'main' }
+permissions: { actions: read, contents: read }
+jobs:
+  run:
+    strategy: { fail-fast: false, matrix: { v: '${{ fromJSON(inputs.variants) }}' } }
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    name: ${{ matrix.v.label }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: experiment
+        env:
+          IVM_PAT: '${{ secrets.IVM_PAT }}'
+          GH_TOKEN: '${{ github.token }}'
+          LABEL: '${{ matrix.v.label }}'
+          ART: '${{ matrix.v.art }}'
+          SMP: '${{ matrix.v.smp || 4 }}'
+          RAM: '${{ matrix.v.ram || ''3G'' }}'
+          TB: '${{ matrix.v.tb || 512 }}'
+          MACHINE_EXTRA: '${{ matrix.v.machine }}'
+          EXTRA_ARGS: '${{ matrix.v.extra }}'
+          PERF: '${{ matrix.v.perf || ''off'' }}'
+          PGO: '${{ matrix.v.pgo || ''off'' }}'
+          RUNS: '${{ matrix.v.runs || 1 }}'
+        run: sudo -E bash ivm-repo/ivm/bench/explore-arm.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: explore-${{ matrix.v.label }}
+          path: |
+            ivm-repo/bench-out/**/*.json
+            ivm-repo/bench-out/**/*.png
+            ivm-repo/bench-out/**/*.log
+            ivm-repo/bench-out/**/*.txt
+            ivm-repo/bench-out/*.md
+            ivm-repo/bench-out/pgo/*.profraw
