@@ -1,0 +1,62 @@
+# Source of truth for ivm-ci/.github/workflows/bench.yml (the public, free-Actions repo).
+# It checks out the private ivm repo with the IVM_PAT secret; no iOS image or keystore ever lands in ivm-ci.
+name: bench
+on:
+  workflow_dispatch:
+    inputs:
+      pin: { description: 'baseline Inferno commit (phone engine today)', default: 'cc4302a99167abec69b714cfd00c38caece7e7de' }
+      dev: { description: 'candidate Inferno commit', default: '6541861f4d033a0de327b5ccc5180ebac20bf461' }
+      runs: { description: '1 = pin,dev   2 = pin,dev,dev,pin', default: '2' }
+      smp: { default: '4' }
+      ram: { default: '3G' }
+      tb: { default: '512' }
+      android: { description: 'also cross-build the candidate for Android arm64 (on|off)', default: 'on' }
+      ivm_ref: { description: 'ivm repo ref', default: 'main' }
+jobs:
+  ab:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: free disk
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache /usr/share/swift || true
+          nproc; free -g; df -h / | tail -1
+      - name: A/B in debian:trixie
+        env: { IVM_PAT: '${{ secrets.IVM_PAT }}', PIN: '${{ inputs.pin }}', DEV: '${{ inputs.dev }}', RUNS: '${{ inputs.runs }}',
+               SMP: '${{ inputs.smp }}', RAM: '${{ inputs.ram }}', TB: '${{ inputs.tb }}' }
+        run: |
+          docker run --rm -e IVM_PAT -e PIN -e DEV -e RUNS -e SMP -e RAM -e TB -v "$GITHUB_WORKSPACE/ivm-repo":/home/user \
+            -v /mnt:/opt debian:trixie bash /home/user/ivm/bench/bench-ci.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-out
+          path: |
+            ivm-repo/bench-out/**/*.json
+            ivm-repo/bench-out/**/*.png
+            ivm-repo/bench-out/**/*.log
+            ivm-repo/bench-out/**/*.txt
+            ivm-repo/bench-out/*.md
+  android:
+    if: inputs.android == 'on'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: host packages
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build python3-venv pkg-config cmake gcc && pipx install meson==1.7.0
+      - name: cross-build candidate for Android arm64
+        working-directory: ivm-repo
+        env: { INFERNO_COMMIT: '${{ inputs.dev }}' }
+        run: bash ivm/android/ci/build-inferno-android.sh 2>&1 | tee native.log; test "${PIPESTATUS[0]}" = 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-native
+          path: |
+            ivm-repo/work/out
+            ivm-repo/native.log
+            ivm-repo/work/Inferno/build/meson-logs/meson-log.txt
