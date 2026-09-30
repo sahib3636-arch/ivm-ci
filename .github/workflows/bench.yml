@@ -13,7 +13,30 @@ on:
       android: { description: 'also cross-build the candidate for Android arm64 (on|off)', default: 'on' }
       ivm_ref: { description: 'ivm repo ref', default: 'main' }
       ab: { description: 'run the x86 A/B benchmark (on|off)', default: 'on' }
+      arm: { description: 'boot the Android engines natively on arm64 in a bionic chroot (on|off)', default: 'off' }
+permissions: { actions: read, contents: read }
 jobs:
+  arm:
+    if: inputs.arm == 'on'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: A/B of the phone engines (bionic chroot, native aarch64)
+        env: { IVM_PAT: '${{ secrets.IVM_PAT }}', GH_TOKEN: '${{ github.token }}', PIN_ART: 'android-native-${{ inputs.pin }}', DEV_ART: 'android-native-${{ inputs.dev }}',
+               RUNS: '${{ inputs.runs }}', SMP: '${{ inputs.smp }}', RAM: '${{ inputs.ram }}', TB: '${{ inputs.tb }}' }
+        run: sudo -E bash ivm-repo/ivm/bench/bench-android-arm.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-arm-out
+          path: |
+            ivm-repo/bench-out/**/*.json
+            ivm-repo/bench-out/**/*.png
+            ivm-repo/bench-out/**/*.log
+            ivm-repo/bench-out/**/*.txt
+            ivm-repo/bench-out/*.md
   ab:
     if: inputs.ab == 'on'
     runs-on: ubuntu-24.04
