@@ -12,8 +12,10 @@ on:
       tb: { default: '512' }
       android: { description: 'also cross-build the candidate for Android arm64 (on|off)', default: 'on' }
       ivm_ref: { description: 'ivm repo ref', default: 'main' }
+      ab: { description: 'run the x86 A/B benchmark (on|off)', default: 'on' }
 jobs:
   ab:
+    if: inputs.ab == 'on'
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     steps:
@@ -55,7 +57,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: android-native
+          name: android-native-${{ inputs.dev }}
           path: |
             ivm-repo/work/out
             ivm-repo/native.log
