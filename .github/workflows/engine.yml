@@ -28,8 +28,10 @@ jobs:
           id=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ART&per_page=1" | jq -r '.artifacts[0].id')
           curl -sL -H "Authorization: Bearer $GH_TOKEN" -o p.zip "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip"
           mkdir -p pgo && cd pgo && unzip -q ../p.zip && find . -name '*.profraw' | head
-          PD=$(ls -d ${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin)/llvm-profdata
-          $PD merge -o "$GITHUB_WORKSPACE/ivm.profdata" $(find . -name '*.profraw') && ls -la "$GITHUB_WORKSPACE/ivm.profdata"
+          # raw profiles are toolchain-version specific: merge with the SAME NDK the build uses (build script: ANDROID_NDK_HOME first)
+          PD=${ANDROID_NDK_HOME:-$ANDROID_NDK_LATEST_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-profdata; $PD --version | head -2
+          $PD merge -o "$GITHUB_WORKSPACE/ivm.profdata" $(find . -name '*.profraw')
+          ls -la "$GITHUB_WORKSPACE/ivm.profdata"
           echo "IVM_PROFDATA=$GITHUB_WORKSPACE/ivm.profdata" >> "$GITHUB_ENV"
       - name: cross-build
         working-directory: ivm-repo
