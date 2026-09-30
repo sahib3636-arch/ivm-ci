@@ -35,6 +35,7 @@ jobs:
           TASKSET: '${{ matrix.v.taskset }}'
           ANIM_TASKSET: '${{ matrix.v.anim_taskset }}'
           TOYBOX_TASKSET: '${{ matrix.v.toybox_taskset }}'
+          MAX_MAP_COUNT: '${{ matrix.v.max_map_count }}'
         run: sudo -E bash ivm-repo/ivm/bench/explore-arm.sh
       - uses: actions/upload-artifact@v4
         if: always()
