@@ -39,6 +39,7 @@ jobs:
           ENG_ENV: '${{ matrix.v.env }}'
           ART_B: '${{ matrix.v.artb }}'
           ENG_ENV_B: '${{ matrix.v.envb }}'
+          TB_B: '${{ matrix.v.tbb }}'
           BOOTARGS_SUB: '${{ matrix.v.bootsub }}'
         run: sudo -E bash ivm-repo/ivm/bench/explore-arm.sh
       - uses: actions/upload-artifact@v4
