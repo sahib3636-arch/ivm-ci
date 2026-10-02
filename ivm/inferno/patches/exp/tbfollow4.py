@@ -28,9 +28,10 @@ sub("accel/tcg/translator.c", "    tb->size   = db->pc_next - db->pc_first;\n",
     "    tb->size   = MAX(db->pc_next, db->ivm_pc_hi) - db->pc_first; /* exp/tbfollow4 */\n")
 
 A64 = "target/arm/tcg/translate-a64.c"
-sub(A64, "    s->insn         = insn;\n    s->base.pc_next = pc + 4;\n",
-    "    s->insn         = insn;\n    s->base.pc_next = pc + 4;\n"
-    "    if (pc + 4 > s->base.ivm_pc_hi) { s->base.ivm_pc_hi = pc + 4; } /* exp/tbfollow4 */\n")
+# record the end of the straight-line run before every pc_next redirect (HLEs may advance pc_next by many insns)
+sub(A64, "    s->base.pc_next = s->pc_curr + diff;\n",
+    "    if (s->base.pc_next > s->base.ivm_pc_hi) { s->base.ivm_pc_hi = s->base.pc_next; } /* exp/tbfollow4 */\n"
+    "    s->base.pc_next = s->pc_curr + diff;\n")
 
 sub("target/arm/tcg/translate.h", "    int  ivm_slots;   /* exp/tbfollow2: goto_tb exit slots already emitted (bit n) */\n",
     "    int  ivm_slots;   /* exp/tbfollow2: goto_tb exit slots already emitted (bit n) */\n"
@@ -88,6 +89,7 @@ static bool ivm_ret_follow(DisasContext* s, int rn)
     ivm_gen_lookup_and_goto_ptr(s);
     set_disas_label(s, ok);
     s->base.is_jmp  = DISAS_NEXT;
+    if (s->base.pc_next > s->base.ivm_pc_hi) { s->base.ivm_pc_hi = s->base.pc_next; }
     s->base.pc_next = expect;
     ivm_follow_bound(s);
     return true;
