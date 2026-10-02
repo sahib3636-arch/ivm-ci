@@ -10,7 +10,8 @@ inside the same TB:
   * every insn still gets its own insn_start (pc), so exceptions restore the right PC;
   * forward-only => no loops inside a TB, the TB still terminates within max_insns;
   * PC-relative values use s->pc_curr (the real address), CF_PCREL tracking (pc_save) is unaffected.
-Not done when single-stepping, CF_NO_GOTO_TB, or when fewer than 8 insn slots remain.
+Not done when single-stepping, CF_NO_GOTO_TB, or when fewer than 8 insn slots remain. After a jump
+max_insns is re-bounded to the end of the page (fix: v1 could run on into the next page).
 Env IVM_FOLLOW=n: max branches followed per TB (default 4, 0 = off).
 """
 import sys, pathlib
@@ -24,6 +25,18 @@ sub("target/arm/tcg/translate.h", "    bool is_ldex;\n", "    bool is_ldex;\n   
 
 sub("target/arm/tcg/translate-a64.c", "static bool trans_B(DisasContext* s, arg_i* a)\n{\n    reset_btype(s);\n    gen_goto_tb(s, 0, a->imm);\n",
 """static int ivm_follow_max = -1;
+
+/*
+ * aarch64_tr_init_disas_context bounds max_insns to the insns left on the TB's page (an A64 TB never
+ * leaves its page, so a translation-time fetch fault can only hit the first insn). After jumping
+ * forward that count no longer matches the address, so re-bound it to the page end from pc_next.
+ */
+static void ivm_follow_bound(DisasContext* s)
+{
+    vaddr page_end = (s->base.pc_next | ~(vaddr)TARGET_PAGE_MASK) + 1;
+    int   left     = (int)((page_end - s->base.pc_next) / 4);
+    s->base.max_insns = MIN(s->base.max_insns, s->base.num_insns + left);
+}
 
 /* exp/tbfollow: continue translation at a forward same-page direct branch target. */
 static bool ivm_tb_follow(DisasContext* s, int64_t diff)
@@ -39,6 +52,7 @@ static bool ivm_tb_follow(DisasContext* s, int64_t diff)
     if (!translator_is_same_page(&s->base, s->pc_curr + diff)) { return false; }
     s->ivm_follows++;
     s->base.pc_next = s->pc_curr + diff;
+    ivm_follow_bound(s);
     return true;
 }
 
