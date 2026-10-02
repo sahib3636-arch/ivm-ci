@@ -39,6 +39,7 @@ jobs:
           ENG_ENV: '${{ matrix.v.env }}'
           ART_B: '${{ matrix.v.artb }}'
           ENG_ENV_B: '${{ matrix.v.envb }}'
+          SMP_B: '${{ matrix.v.smpb }}'
           TB_B: '${{ matrix.v.tbb }}'
           MACHINE_B: '${{ matrix.v.machineb }}'
           BOOTARGS_SUB: '${{ matrix.v.bootsub }}'
