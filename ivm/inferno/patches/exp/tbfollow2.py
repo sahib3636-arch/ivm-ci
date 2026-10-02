@@ -7,7 +7,8 @@ continues at pc+4 inside the same TB, so the TB stays contiguous. Exit slots are
 (s->ivm_slots): gen_goto_tb takes the other slot when the requested one is used, and falls back to the
 (inline-probed) lookup_and_goto_ptr when both are used. pc_save is restored at the skip label by the
 DisasLabel mechanism (CF_PCREL correctness).
-Env IVM_FOLLOWC=0 disables (default on; IVM_FOLLOW=0 does not disable this part).
+Env IVM_FOLLOWC=0 disables (default on; IVM_FOLLOW=0 does not disable this part). Debug mask (s33 bisect):
+IVM_FOLLOWC=1 -> 31 (all); bit0 EL0 code, bit1 EL1+ code, bit2 CBZ/CBNZ, bit3 TBZ/TBNZ, bit4 B.cond.
 """
 import sys, pathlib
 root = pathlib.Path(sys.argv[1])
@@ -35,13 +36,16 @@ sub(A64, "static bool trans_B(DisasContext* s, arg_i* a)\n{\n    reset_btype(s);
 """static int ivm_followc = -1;
 
 /* exp/tbfollow2: may this conditional branch become a side exit (translation continues at pc+4)? */
-static bool ivm_cond_follow_ok(DisasContext* s)
+static bool ivm_cond_follow_ok(DisasContext* s, int kind)
 {
     if (unlikely(ivm_followc < 0)) {
         const char* e = getenv("IVM_FOLLOWC");
-        ivm_followc   = e ? (atoi(e) != 0) : 1;
+        ivm_followc   = e ? (int)strtol(e, NULL, 0) : 31;
+        if (ivm_followc == 1) { ivm_followc = 31; }
+        fprintf(stderr, "ivm: tbfollow2 mask %d\\n", ivm_followc);
     }
-    if (!ivm_followc || s->ivm_slots != 0 || s->ss_active) { return false; }
+    if (!(ivm_followc & (s->current_el ? 2 : 1)) || !(ivm_followc & kind)) { return false; }
+    if (s->ivm_slots != 0 || s->ss_active) { return false; }
     if (tb_cflags(s->base.tb) & CF_NO_GOTO_TB) { return false; }
     if (s->base.num_insns + 8 > s->base.max_insns) { return false; }
     return true;
@@ -68,7 +72,7 @@ sub(A64, """    tcg_cmp = read_cpu_reg(s, a->rt, a->sf);
 """, """    tcg_cmp = read_cpu_reg(s, a->rt, a->sf);
     reset_btype(s);
 
-    if (ivm_cond_follow_ok(s)) {
+    if (ivm_cond_follow_ok(s, 4)) {
         DisasLabel skip = gen_disas_label(s);
         tcg_gen_brcondi_i64(a->nz ? TCG_COND_EQ : TCG_COND_NE, tcg_cmp, 0, skip.label);
         ivm_cond_side_exit(s, skip, a->imm);
@@ -87,7 +91,7 @@ sub(A64, """    tcg_gen_andi_i64(tcg_cmp, cpu_reg(s, a->rt), 1ULL << a->bitpos);
 
     reset_btype(s);
 
-    if (ivm_cond_follow_ok(s)) {
+    if (ivm_cond_follow_ok(s, 8)) {
         DisasLabel skip = gen_disas_label(s);
         tcg_gen_brcondi_i64(a->nz ? TCG_COND_EQ : TCG_COND_NE, tcg_cmp, 0, skip.label);
         ivm_cond_side_exit(s, skip, a->imm);
@@ -100,7 +104,7 @@ sub(A64, """    tcg_gen_andi_i64(tcg_cmp, cpu_reg(s, a->rt), 1ULL << a->bitpos);
 sub(A64, """    if (a->cond < 0x0e) {
         /* genuinely conditional branches */
         DisasLabel match = gen_disas_label(s);
-""", """    if (a->cond < 0x0e && ivm_cond_follow_ok(s)) {
+""", """    if (a->cond < 0x0e && ivm_cond_follow_ok(s, 16)) {
         DisasLabel skip = gen_disas_label(s);
         arm_gen_test_cc(a->cond ^ 1, skip.label);
         ivm_cond_side_exit(s, skip, a->imm);
