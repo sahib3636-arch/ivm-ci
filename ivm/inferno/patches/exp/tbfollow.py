@@ -71,4 +71,8 @@ sub("target/arm/tcg/translate-a64.c", """    gen_pc_plus_diff(s, cpu_reg(s, 30),
     if (ivm_tb_follow(s, a->imm)) { return true; }
     gen_goto_tb(s, 0, a->imm);
 """)
+# A TB can also be cut right after a followed branch (tcg_op_buf_full): the fall-through exit must then go to
+# pc_next (the branch target), not pc_curr + 4. Identical to upstream whenever pc_next == pc_curr + 4.
+sub("target/arm/tcg/translate-a64.c", "            case DISAS_TOO_MANY: gen_goto_tb(dc, 1, 4); break;\n",
+    "            case DISAS_TOO_MANY: gen_goto_tb(dc, 1, dc->base.pc_next - dc->pc_curr); break; /* exp/tbfollow */\n")
 print("tbfollow: applied")
