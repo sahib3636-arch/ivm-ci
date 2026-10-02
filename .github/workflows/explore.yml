@@ -40,6 +40,7 @@ jobs:
           ART_B: '${{ matrix.v.artb }}'
           ENG_ENV_B: '${{ matrix.v.envb }}'
           SMP_B: '${{ matrix.v.smpb }}'
+          BTN_TEST: '${{ matrix.v.btn }}'
           TB_B: '${{ matrix.v.tbb }}'
           MACHINE_B: '${{ matrix.v.machineb }}'
           BOOTARGS_SUB: '${{ matrix.v.bootsub }}'
