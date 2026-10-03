@@ -7,7 +7,7 @@ continues at pc+4 inside the same TB, so the TB stays contiguous. Exit slots are
 (s->ivm_slots): gen_goto_tb takes the other slot when the requested one is used, and falls back to the
 (inline-probed) lookup_and_goto_ptr when both are used. pc_save is restored at the skip label by the
 DisasLabel mechanism (CF_PCREL correctness).
-Env IVM_FOLLOWC=0 disables (default on; IVM_FOLLOW=0 does not disable this part). Debug mask (s33 bisect):
+s33 VERDICT: rejected (-2 %), default OFF; IVM_FOLLOWC=1 enables ( IVM_FOLLOW=0 does not disable this part). Debug mask (s33 bisect):
 IVM_FOLLOWC=1 -> 31 (all); bit0 EL0 code, bit1 EL1+ code, bit2 CBZ/CBNZ, bit3 TBZ/TBNZ, bit4 B.cond.
 """
 import sys, pathlib
@@ -40,7 +40,7 @@ static bool ivm_cond_follow_ok(DisasContext* s, int kind)
 {
     if (unlikely(ivm_followc < 0)) {
         const char* e = getenv("IVM_FOLLOWC");
-        ivm_followc   = e ? (int)strtol(e, NULL, 0) : 31;
+        ivm_followc   = e ? (int)strtol(e, NULL, 0) : 0; /* s33: default OFF (A/B -2 %, SEP boot hazard) */
         if (ivm_followc == 1) { ivm_followc = 31; }
         fprintf(stderr, "ivm: tbfollow2 mask %d\\n", ivm_followc);
     }
