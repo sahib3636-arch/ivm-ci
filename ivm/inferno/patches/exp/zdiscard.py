@@ -126,4 +126,20 @@ sub(H, '''        if (likely(host != NULL)) {
                 memset(hz, 0, 64);
             }''')
 if "ivm_zva_commit(" in (root / H).read_text(): sys.exit("zdiscard: stale ivm_zva_commit call")
+# v2: the first page of a fresh zero-fill is usually a TLB miss -> the slow path probe_write()s it and used to memset
+# 64 B there, i.e. touch (swap in) the page before the fast path could discard it (FAULTREC s14ta: 10.8k major faults
+# inside helper_ivm_zva). After the probe, re-check tlb_vaddr_to_host() (non-NULL = no TBs on the page and dirty for
+# every client) and take the whole-page path from the slow path too.
+sub(H, """            mem = probe_write(env, a, 64, mmu, ra);
+            if (mem) { memset(mem, 0, 64); }""", """            mem = probe_write(env, a, 64, mmu, ra);
+            if (mem && (a & 4095) == 0 && x2 >= 4033 && n + 64 <= 1024 && TARGET_PAGE_SIZE >= 4096
+                && qemu_real_host_page_size() == 4096 && ivm_zd_active()) {
+                uint8_t* h2 = tlb_vaddr_to_host(env, a, MMU_DATA_STORE, mmu);
+                if (h2 && ((uintptr_t)h2 & 4095) == 0) {
+                    ivm_zd_page(h2);
+                    n += 63; x3 += 63 * 64; x2 -= 63 * 64;
+                } else {
+                    memset(mem, 0, 64);
+                }
+            } else if (mem) { memset(mem, 0, 64); }""")
 print("zdiscard: ok")
