@@ -204,6 +204,7 @@ void ivm_tb_evict__exclusive_or_serial(void)
         tb_flush__exclusive_or_serial();
         return;
     }
+    int64_t t0 = get_clock_realtime();
     qemu_thread_jit_write();
     for (size_t i = 0; i < nv; i++) { tcg_region_ivm_foreach(v[i], ivm_evict_one, &cnt); }
     qemu_thread_jit_execute();
@@ -212,6 +213,8 @@ void ivm_tb_evict__exclusive_or_serial(void)
     qatomic_set(&tb_ctx.tb_phys_invalidate_count, tb_ctx.tb_phys_invalidate_count + cnt);
     ivm_tb_evicted += cnt;
     qatomic_inc(&ivm_tb_evict_count);
+    fprintf(stderr, "ivm tbevict #%u: %zu regions, %zu TBs, %.1f ms\n", ivm_tb_evict_count, nv, cnt,
+            (get_clock_realtime() - t0) / 1e6);
 }
 
 static void do_ivm_tb_evict(CPUState* cpu, run_on_cpu_data unused)
@@ -230,6 +233,23 @@ sub(T, "/* ---- ivm tbevict (see", "#define IVM_EV_MAX 256\nsize_t tcg_nb_region
 sub(R, "size_t tcg_region_ivm_pick(size_t* victims, size_t max);\nsize_t tcg_region_ivm_pick(",
     "size_t tcg_nb_regions_ivm(void);\nsize_t tcg_nb_regions_ivm(void) { return region.n; }\n\n"
     "size_t tcg_region_ivm_pick(size_t* victims, size_t max);\nsize_t tcg_region_ivm_pick(")
+
+sub(T, '#include "system/runstate.h"\n', '#include "system/runstate.h"\n#include "qemu/timer.h"\n')
+sub(T, """    CPU_FOREACH (cpu) { tcg_flush_jmp_cache(cpu); }
+
+    qht_reset_size(&tb_ctx.htable, CODE_GEN_HTABLE_SIZE);
+    tb_remove_all();
+
+    tcg_region_reset_all();
+""", """    int64_t ivm_t0 = get_clock_realtime();
+    CPU_FOREACH (cpu) { tcg_flush_jmp_cache(cpu); }
+
+    qht_reset_size(&tb_ctx.htable, CODE_GEN_HTABLE_SIZE);
+    tb_remove_all();
+
+    tcg_region_reset_all();
+    fprintf(stderr, "ivm tb_flush #%u: %.1f ms\\n", tb_ctx.tb_flush_count + 1, (get_clock_realtime() - ivm_t0) / 1e6);
+""")
 
 H = "include/exec/tb-flush.h"
 sub(H, "void queue_tb_flush(CPUState* cs);\n",
