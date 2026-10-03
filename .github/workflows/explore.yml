@@ -44,6 +44,7 @@ jobs:
           TB_B: '${{ matrix.v.tbb }}'
           MACHINE_B: '${{ matrix.v.machineb }}'
           BOOTARGS_SUB: '${{ matrix.v.bootsub }}'
+          BENCH_ENV: '${{ matrix.v.benv }}'
         run: sudo -E bash ivm-repo/ivm/bench/explore-arm.sh
       - uses: actions/upload-artifact@v4
         if: always()
