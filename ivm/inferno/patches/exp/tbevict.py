@@ -213,11 +213,11 @@ void ivm_tb_evict__exclusive_or_serial(void)
     qatomic_set(&tb_ctx.tb_phys_invalidate_count, tb_ctx.tb_phys_invalidate_count + cnt);
     ivm_tb_evicted += cnt;
     qatomic_inc(&ivm_tb_evict_count);
-    fprintf(stderr, "ivm tbevict #%u: %zu regions, %zu TBs, %.1f ms\n", ivm_tb_evict_count, nv, cnt,
+    fprintf(stderr, "ivm tbevict #%u: %zu regions, %zu TBs, %.1f ms\\n", ivm_tb_evict_count, nv, cnt,
             (get_clock_realtime() - t0) / 1e6);
 }
 
-static void do_ivm_tb_evict(CPUState* cpu, run_on_cpu_data unused)
+static void do_ivm_tb_evict(CPUState* cpu G_GNUC_UNUSED, run_on_cpu_data unused G_GNUC_UNUSED)
 {
     ivm_tb_evict__exclusive_or_serial();
 }
