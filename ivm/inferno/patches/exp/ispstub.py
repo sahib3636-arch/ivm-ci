@@ -30,6 +30,10 @@ sub(B, "            if (memcmp(prop->data, REM_NAMES[i], size) == 0) {\n        
        "                assert_nonnull(parent);\n                DINFO(\"Removing node `%s` (blacklisted name)\"")
 
 T = "hw/arm/t8030.c"
+sub(T, "static void t8030_rtkit_seg_prop_setup(AppleDTNode* iop_nub, hwaddr base, uint32_t size)\n",
+       "static hwaddr ivm_isp_fw_phys;   /* ivm ispstub: fake preloaded fw carve-out */\n"
+       "static void t8030_rtkit_seg_prop_setup(AppleDTNode* iop_nub, hwaddr base, uint32_t size)\n")
+_FW = (pathlib.Path(__file__).resolve().parent / "ispstub_fw.c").read_text()
 sub(T, "static void t8030_create_sart(AppleT8030MachineState* t8030)\n", r'''/* ---- ivm ispstub (exp/ispstub.py) ---- */
 typedef struct {
     MemoryRegion mr;
@@ -64,7 +68,7 @@ static void ivm_isp_log(char k, IvmIspRegion* r, hwaddr off, unsigned size, uint
     }
 }
 
-static uint64_t ivm_isp_read(void* opaque, hwaddr off, unsigned size)
+@@IVM_FW@@static uint64_t ivm_isp_read(void* opaque, hwaddr off, unsigned size)
 {
     IvmIspRegion* r = opaque;
     gpointer key = GUINT_TO_POINTER(((guint)r->idx << 28) | (guint)off);
@@ -87,6 +91,7 @@ static void ivm_isp_write(void* opaque, hwaddr off, uint64_t val, unsigned size)
         }
     }
     g_hash_table_insert(ivm_isp_regs, GUINT_TO_POINTER(key), GUINT_TO_POINTER((guint)val));
+    if (r->idx == 0) { ivm_isp_fw_write(off, val); }
     ivm_isp_log('W', r, off, size, val);
 }
 
@@ -153,4 +158,25 @@ static void t8030_create_sart(AppleT8030MachineState* t8030)
 sub(T, "    t8030_create_dart(t8030, \"dart-scaler\", false);\n",
        "    t8030_create_dart(t8030, \"dart-scaler\", false);\n"
        "    if (getenv(\"IVM_ISP\")) { t8030_create_dart(t8030, \"dart-isp\", false); ivm_isp_create(t8030); }\n")
+
+# fake "iBoot-preloaded" ISP firmware: AppleH10CamIn then skips the userland ISP_LoadFirmware path (applecamerad passes
+# len 0, which on real hardware is fine because iBoot preloaded the firmware) and maps __TEXT/__DATA from
+# `segment-ranges` (2 x {u64 phys, u64 iova, u64 remap, u32 size, u32 pad}) into the ISP DART.
+sub(T, '    t8030_rtkit_mem_setup(t8030, ca, "ans", "iop-ans-nub", ANS_SIZE);\n',
+       '    t8030_rtkit_mem_setup(t8030, ca, "ans", "iop-ans-nub", ANS_SIZE);\n'
+       '    if (getenv("IVM_ISP")) {   /* ivm ispstub: carve out a fake preloaded ISP firmware (TEXT 1M + DATA 1M) */\n'
+       '        AppleDTNode* ivm_aio = apple_dt_get_node(t8030->device_tree, "arm-io");\n'
+       '        AppleDTNode* ivm_isp = ivm_aio ? apple_dt_get_node(ivm_aio, "isp") : NULL;\n'
+       '        if (ivm_isp) {\n'
+       '            uint64_t ivm_seg[8];\n'
+       '            hwaddr   ivm_fw = carveout_alloc_mem(ca, 2 * MiB);\n'
+       '            ivm_seg[0] = ivm_fw;           ivm_seg[1] = 0x10000;  ivm_seg[2] = 0x10000;  ivm_seg[3] = 1 * MiB;\n'
+       '            ivm_seg[4] = ivm_fw + 1 * MiB; ivm_seg[5] = 0x110000; ivm_seg[6] = 0x110000; ivm_seg[7] = 1 * MiB;\n'
+       '            apple_dt_set_prop(ivm_isp, "segment-ranges", sizeof(ivm_seg), ivm_seg);\n'
+       '            apple_dt_set_prop_u32(ivm_isp, "pre-loaded", 1);\n'
+       '            ivm_isp_fw_phys = ivm_fw;\n'
+       '            fprintf(stderr, "[ivm-isp] fake preloaded fw at 0x%" PRIx64 "\\n", (uint64_t)ivm_fw);\n'
+       '        }\n'
+       '    }\n')
+p_ = root / T; s_ = p_.read_text(); assert s_.count("@@IVM_FW@@") == 1; p_.write_text(s_.replace("@@IVM_FW@@", _FW))
 print("ispstub: ok")
