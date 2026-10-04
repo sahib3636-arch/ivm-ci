@@ -239,6 +239,10 @@ static bool ivm_isp_cmd_respond(uint8_t* b, uint32_t len, uint16_t op)
         ivm_isp_put16(b, len, 0x18, c->binned);
         ivm_isp_put16(b, len, 0x1a, c->binned);
         ivm_isp_put16(b, len, 0x1c, c->fps << 8);
+        /* cfg+0x10 is passed by ActivatePrimaryScalerOutputInFrameReceiver as the 2nd arg of
+         * addBufferPoolToFrameReceiver, which rejects (0xe00002e2) a value already used by a pool (the
+         * metadata pools use 0) -> must be non-zero. Value = sensor width (best guess). */
+        ivm_isp_put32(b, len, 0x20, c->w);
         ivm_isp_put16(b, len, 0x1e, 2 << 8);
         ivm_isp_put32(b, len, 0x70, 500000);
         ivm_isp_put32(b, len, 0x74, 10);
