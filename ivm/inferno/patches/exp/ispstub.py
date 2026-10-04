@@ -158,6 +158,15 @@ static void ivm_isp_create(AppleT8030MachineState* t8030)
         memory_region_init_io(&r->mr, OBJECT(t8030), &ivm_isp_ops, r, "ivm-isp-x", 0x4000);
         memory_region_add_subregion_overlap(get_system_memory(), r->base, &r->mr, -1);
     }
+    {   /* ISP DMA view for decoding command packets */
+        Object* d = object_property_get_link(OBJECT(t8030), "dart-isp", NULL);
+        AppleDTNode* m = apple_dt_get_node(t8030->device_tree, "arm-io/dart-isp/mapper-isp");
+        AppleDTProp* mp = m ? apple_dt_get_prop(m, "reg") : NULL;
+        if (d && mp) {
+            address_space_init(&ivm_isp_dma_as, MEMORY_REGION(apple_dart_iommu_mr(APPLE_DART(d), ldl_le_p(mp->data))), "ivm-isp.dma");
+            ivm_isp_dma_ok = true;
+        }
+    }
     if ((prop = apple_dt_get_prop(isp, "interrupts")) && prop->len >= 4) {
         ivm_isp_irq = qdev_get_gpio_in(DEVICE(t8030->aic), ldl_le_p(prop->data));
         fprintf(stderr, "[ivm-isp] irq %u\n", ldl_le_p(prop->data));
