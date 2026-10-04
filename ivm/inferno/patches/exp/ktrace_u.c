@@ -294,3 +294,72 @@ static void ivm_oslog_core(CPUARMState* env, uint64_t dso_va, unsigned type, uin
     out[o < sizeof(out) ? o : sizeof(out) - 1] = 0;
     fprintf(stderr, "[oslog] dso=%" PRIx64 " t=%u %s\n", dso, type, out);
 }
+
+/* Kernel os_log mirror: IVM_KOSLOG=<VA of _os_log_internal> (kernel, no slide with kaslr off).
+ * _os_log_internal(dso, log, type, fmt, ...) - Darwin variadics live on the stack, one 8-byte slot each. */
+void HELPER(ivm_koslog)(CPUARMState* env, uint64_t pc)
+{
+    static long n, max = -1;
+    char        fmt[400], out[1200], s[200];
+    uint64_t    st[16];
+    size_t      o = 0;
+    int         ai = 0, i;
+    const char* f;
+    if (max < 0) {
+        const char* e = getenv("IVM_KOSLOG_N");
+        max = e ? atol(e) : 50000;
+    }
+    if (n++ >= max) {
+        return;
+    }
+    ivm_u_cstr(env, env->xregs[3], fmt, sizeof(fmt));
+    ivm_u_read(env, env->xregs[31], st, sizeof(st));
+    for (f = fmt; *f && o < sizeof(out) - 260; f++) {
+        const char* spec;
+        char        conv;
+        if (*f != '%') {
+            out[o++] = *f;
+            continue;
+        }
+        if (f[1] == '%') {
+            out[o++] = '%';
+            f++;
+            continue;
+        }
+        spec = f + 1;
+        while (*spec == '{') {
+            while (*spec && *spec != '}') {
+                spec++;
+            }
+            if (*spec) {
+                spec++;
+            }
+        }
+        while (*spec && !strchr("diouxXscpPfFeEgGaA@SC", *spec)) {
+            spec++;
+        }
+        conv = *spec;
+        f    = *spec ? spec : spec - 1;
+        if (ai >= 16) {
+            o += snprintf(out + o, sizeof(out) - o, "<?>");
+            continue;
+        }
+        if (conv == 's') {
+            ivm_u_cstr(env, st[ai++], s, sizeof(s));
+            o += snprintf(out + o, sizeof(out) - o, "%s", s);
+        } else if (conv == 'x' || conv == 'X' || conv == 'p' || conv == 'P') {
+            o += snprintf(out + o, sizeof(out) - o, "%" PRIx64, st[ai++]);
+        } else if (conv == 'd' || conv == 'i') {
+            o += snprintf(out + o, sizeof(out) - o, "%d", (int)st[ai++]);
+        } else {
+            o += snprintf(out + o, sizeof(out) - o, "%" PRIu64, st[ai++]);
+        }
+    }
+    out[o] = 0;
+    for (i = 0; out[i]; i++) {
+        if (out[i] == '\n') {
+            out[i] = ' ';
+        }
+    }
+    fprintf(stderr, "[koslog] %s\n", out);
+}
