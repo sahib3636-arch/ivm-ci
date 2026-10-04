@@ -15,7 +15,7 @@ def sub(rel, old, new):
 
 sub("target/arm/tcg/helper-a64.h", "DEF_HELPER_FLAGS_2(udiv64, TCG_CALL_NO_RWG_SE, i64, i64, i64)\n",
     "DEF_HELPER_FLAGS_2(udiv64, TCG_CALL_NO_RWG_SE, i64, i64, i64)\nDEF_HELPER_2(ivm_ktrace, void, env, i64)\n"
-    "DEF_HELPER_2(ivm_slide, void, env, i64)\nDEF_HELPER_2(ivm_utrace, void, env, i64)\nDEF_HELPER_2(ivm_oslog, void, env, i64)\n")
+    "DEF_HELPER_2(ivm_slide, void, env, i64)\nDEF_HELPER_2(ivm_utrace, void, env, i64)\nDEF_HELPER_2(ivm_oslog, void, env, i64)\nDEF_HELPER_2(ivm_figlog, void, env, i64)\n")
 p = root / "target/arm/tcg/helper-a64.c"
 p.write_text(p.read_text() + r'''
 /* ---- iVM ktrace (exp/ktrace.py) ---- */
@@ -50,7 +50,7 @@ sub("target/arm/tcg/translate-a64.c", "    s->pc_curr      = pc;\n    insn      
             if (ivm_kt_pc[k] == pc) { gen_helper_ivm_ktrace(tcg_env, tcg_constant_i64(pc)); break; }
         }
         static int      ivm_ut_n = -1;
-        static uint64_t ivm_ut_pc[32], ivm_slide_pc, ivm_oslog_pc;
+        static uint64_t ivm_ut_pc[32], ivm_slide_pc, ivm_oslog_pc, ivm_figlog_pc;
         extern uint64_t ivm_dsc_slide;
         if (ivm_ut_n < 0) {
             const char* e = getenv("IVM_UTRACE");
@@ -64,6 +64,8 @@ sub("target/arm/tcg/translate-a64.c", "    s->pc_curr      = pc;\n    insn      
             ivm_slide_pc = e ? strtoull(e, NULL, 16) : 0;
             e = getenv("IVM_OSLOG");
             ivm_oslog_pc = e ? strtoull(e, NULL, 16) : 0;
+            e = getenv("IVM_FIGLOG");
+            ivm_figlog_pc = e ? strtoull(e, NULL, 16) : 0;
             e = getenv("IVM_DSC_SLIDE");
             if (e) {
                 ivm_dsc_slide = strtoull(e, NULL, 16);
@@ -76,6 +78,9 @@ sub("target/arm/tcg/translate-a64.c", "    s->pc_curr      = pc;\n    insn      
             uint64_t upc = pc - ivm_dsc_slide;
             if (ivm_oslog_pc && upc == ivm_oslog_pc) {
                 gen_helper_ivm_oslog(tcg_env, tcg_constant_i64(pc));
+            }
+            if (ivm_figlog_pc && upc == ivm_figlog_pc) {
+                gen_helper_ivm_figlog(tcg_env, tcg_constant_i64(pc));
             }
             for (k = 0; k < ivm_ut_n; k++) {
                 if (ivm_ut_pc[k] == upc) { gen_helper_ivm_utrace(tcg_env, tcg_constant_i64(pc)); break; }
