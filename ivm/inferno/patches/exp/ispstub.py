@@ -40,6 +40,27 @@ static GHashTable* ivm_isp_regs;   /* key (idx<<28|off) -> last written value */
 static GHashTable* ivm_isp_rd;     /* key -> forced read value */
 static long        ivm_isp_nlog, ivm_isp_maxlog = 4000;
 
+/* log with the guest LR (x30 is synced to env at slow-path memory ops); identical consecutive accesses are
+ * collapsed into one "xN" line so a polling loop does not eat the log budget */
+static char     ivm_isp_last_k; static int ivm_isp_last_idx; static hwaddr ivm_isp_last_off; static uint64_t ivm_isp_last_val, ivm_isp_last_lr;
+static long     ivm_isp_rep;
+static void ivm_isp_log(char k, IvmIspRegion* r, hwaddr off, unsigned size, uint64_t val)
+{
+    uint64_t lr = 0;
+    if (current_cpu) { lr = ARM_CPU(current_cpu)->env.xregs[30]; }
+    if (k == ivm_isp_last_k && r->idx == ivm_isp_last_idx && off == ivm_isp_last_off && val == ivm_isp_last_val && lr == ivm_isp_last_lr) {
+        ivm_isp_rep++;
+        if ((ivm_isp_rep & (ivm_isp_rep - 1)) == 0 && ivm_isp_rep >= 1024) { fprintf(stderr, "[ivm-isp]   ... x%ld\n", ivm_isp_rep); }
+        return;
+    }
+    if (ivm_isp_rep) { fprintf(stderr, "[ivm-isp]   ... x%ld\n", ivm_isp_rep); ivm_isp_rep = 0; }
+    ivm_isp_last_k = k; ivm_isp_last_idx = r->idx; ivm_isp_last_off = off; ivm_isp_last_val = val; ivm_isp_last_lr = lr;
+    if (ivm_isp_nlog++ < ivm_isp_maxlog) {
+        fprintf(stderr, "[ivm-isp] %c%d %d +0x%06" HWADDR_PRIx " %s 0x%" PRIx64 " lr=0x%" PRIx64 "\n", k, r->idx, size, off,
+                k == 'R' ? "->" : "<-", val, lr);
+    }
+}
+
 static uint64_t ivm_isp_read(void* opaque, hwaddr off, unsigned size)
 {
     IvmIspRegion* r = opaque;
@@ -48,9 +69,7 @@ static uint64_t ivm_isp_read(void* opaque, hwaddr off, unsigned size)
     uint64_t val = 0;
     if (ivm_isp_rd && g_hash_table_lookup_extended(ivm_isp_rd, key, NULL, &v)) { val = GPOINTER_TO_UINT(v); }
     else if (g_hash_table_lookup_extended(ivm_isp_regs, key, NULL, &v)) { val = GPOINTER_TO_UINT(v); }
-    if (ivm_isp_nlog++ < ivm_isp_maxlog) {
-        fprintf(stderr, "[ivm-isp] R%d %d +0x%06" HWADDR_PRIx " (0x%" PRIx64 ") -> 0x%" PRIx64 "\n", r->idx, size, off, r->base + off, val);
-    }
+    ivm_isp_log('R', r, off, size, val);
     return val;
 }
 
@@ -58,9 +77,7 @@ static void ivm_isp_write(void* opaque, hwaddr off, uint64_t val, unsigned size)
 {
     IvmIspRegion* r = opaque;
     g_hash_table_insert(ivm_isp_regs, GUINT_TO_POINTER(((guint)r->idx << 28) | (guint)off), GUINT_TO_POINTER((guint)val));
-    if (ivm_isp_nlog++ < ivm_isp_maxlog) {
-        fprintf(stderr, "[ivm-isp] W%d %d +0x%06" HWADDR_PRIx " (0x%" PRIx64 ") <- 0x%" PRIx64 "\n", r->idx, size, off, r->base + off, val);
-    }
+    ivm_isp_log('W', r, off, size, val);
 }
 
 static const MemoryRegionOps ivm_isp_ops = {
