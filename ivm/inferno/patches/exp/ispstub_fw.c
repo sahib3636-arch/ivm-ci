@@ -33,9 +33,61 @@ static const IvmIspChan ivm_isp_chans[] = {
     { "IO_T2H", 1, 3, 8 },
 };
 
+static qemu_irq ivm_isp_irq;      /* AIC line of isp interrupts[0] (kext registers index 0) */
+static uint32_t ivm_isp_pend;     /* pending sources: bit (1 << channel src) */
+static long     ivm_isp_ncmd;
+
 static void ivm_isp_set(uint32_t off, uint32_t val)
 {
     g_hash_table_insert(ivm_isp_regs, GUINT_TO_POINTER(off), GUINT_TO_POINTER(val));
+}
+
+static void ivm_isp_ring_rw(uint32_t ring, uint32_t slot, uint32_t* w0, bool wr)
+{
+    hwaddr a = ivm_isp_fw_phys + ring + slot * 0x40u;
+    if (wr) {
+        uint32_t le = cpu_to_le32(*w0);
+        address_space_write(&address_space_memory, a, MEMTXATTRS_UNSPECIFIED, &le, 4);
+    } else {
+        uint32_t le = 0;
+        address_space_read(&address_space_memory, a, MEMTXATTRS_UNSPECIFIED, &le, 4);
+        *w0 = le32_to_cpu(le);
+    }
+}
+
+/* IOProcessorChannel slots are 64 B: w0 = ISP address | turn bit0, w1, w2.  Command (type 0) rings: host
+ * writes bit0 = 0, fw completes by setting bit0 = 1 (cmd+6 ack stays 0 = success).  Other rings start owned by
+ * fw (bit0 = 1).  Completion raises pending bit (1 << src) at +0x1ae0100, host W1C-clears via +0x1ae4a0c. */
+static void ivm_isp_doorbell(uint32_t gb, uint32_t bits)
+{
+    uint32_t i, k, w0, w[3], done = 0;
+    for (i = 0; i < ARRAY_SIZE(ivm_isp_chans); i++) {
+        uint32_t ring = IVM_ISP_RING0 + i * IVM_ISP_RING_STRIDE;
+        if (ivm_isp_chans[i].type != 0 || !((bits >> ivm_isp_chans[i].src) & 1)) {
+            continue;
+        }
+        for (k = 0; k < ivm_isp_chans[i].num; k++) {
+            ivm_isp_ring_rw(ring, k, &w0, false);
+            if (w0 & 1) {
+                continue;
+            }
+            address_space_read(&address_space_memory, ivm_isp_fw_phys + ring + k * 0x40u, MEMTXATTRS_UNSPECIFIED, w, 12);
+            if (ivm_isp_ncmd++ < 2000) {
+                fprintf(stderr, "[ivm-isp] fw: cmd #%ld %s[%u] addr=0x%x len=0x%x w2=0x%x -> ack\n", ivm_isp_ncmd,
+                        ivm_isp_chans[i].name, k, le32_to_cpu(w[0]), le32_to_cpu(w[1]), le32_to_cpu(w[2]));
+            }
+            w0 |= 1;
+            ivm_isp_ring_rw(ring, k, &w0, true);
+            done |= 1u << ivm_isp_chans[i].src;
+        }
+    }
+    if (done) {
+        ivm_isp_pend |= done;
+        ivm_isp_set(gb - 0x4000u, ivm_isp_pend);
+        if (ivm_isp_irq) {
+            qemu_irq_raise(ivm_isp_irq);
+        }
+    }
 }
 
 static void ivm_isp_fw_write(hwaddr off, uint64_t val)
@@ -59,6 +111,13 @@ static void ivm_isp_fw_write(hwaddr off, uint64_t val)
                                 MEMTXATTRS_UNSPECIFIED, tbl, sizeof(tbl));
         }
         if (j == 0) {
+            uint32_t k, one = 1;
+            for (i = 0; i < ARRAY_SIZE(ivm_isp_chans); i++) {
+                for (k = 0; ivm_isp_chans[i].type != 0 && k < ivm_isp_chans[i].num; k++) {
+                    ivm_isp_ring_rw(IVM_ISP_RING0 + i * IVM_ISP_RING_STRIDE, k, &one, true);
+                }
+            }
+            ivm_isp_pend = 0;
             fprintf(stderr, "[ivm-isp] fw: CPU released -> wake (%u channels)\n", (unsigned)ARRAY_SIZE(ivm_isp_chans));
         }
         ivm_isp_set(IVM_ISP_GPIO(0), ARRAY_SIZE(ivm_isp_chans));
@@ -72,6 +131,14 @@ static void ivm_isp_fw_write(hwaddr off, uint64_t val)
         ivm_isp_set(IVM_ISP_GPIO(0), IVM_ISP_TABLE);
         ivm_isp_set(IVM_ISP_GPIO(1), 0);
         ivm_isp_set(IVM_ISP_GPIO(7), 0x8042006);
+    } else if (off == gb + 0x900u) {
+        ivm_isp_doorbell(gb, (uint32_t)val);
+    } else if (off == gb + 0x90cu) {
+        ivm_isp_pend &= ~(uint32_t)val;
+        ivm_isp_set(gb - 0x4000u, ivm_isp_pend);
+        if (!ivm_isp_pend && ivm_isp_irq) {
+            qemu_irq_lower(ivm_isp_irq);
+        }
     } else if (off == IVM_ISP_GPIO(3) && (uint32_t)val == 0x8042006u) {
         ivm_isp_set(IVM_ISP_GPIO(3), 0);
         fprintf(stderr, "[ivm-isp] fw: channels armed -> firmware running\n");
