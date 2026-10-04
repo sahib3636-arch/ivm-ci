@@ -166,8 +166,8 @@ static void ivm_isp_frame_tick(void* opaque)
         }
         b = ivm_isp_bufq[pool][0];
         memmove(&ivm_isp_bufq[pool][0], &ivm_isp_bufq[pool][1], (--ivm_isp_bufn[pool]) * sizeof(IvmIspBuf));
-        if (pool == 0) {
-            ivm_isp_fill(ldl_le_p(b.e), 1504 * 64);
+        if (getenv("IVM_ISP_FILL") && pool == (uint32_t)atoi(getenv("IVM_ISP_FILLPOOL") ?: "99")) {
+            ivm_isp_fill(ldl_le_p(b.e), 0);
         }
         memcpy(msg + 8 + n * 0x30, b.e, 0x30);
         n++;
