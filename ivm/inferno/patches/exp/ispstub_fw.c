@@ -239,10 +239,13 @@ static bool ivm_isp_cmd_respond(uint8_t* b, uint32_t len, uint16_t op)
         ivm_isp_put16(b, len, 0x18, c->binned);
         ivm_isp_put16(b, len, 0x1a, c->binned);
         ivm_isp_put16(b, len, 0x1c, c->fps << 8);
-        /* cfg+0x10 is passed by ActivatePrimaryScalerOutputInFrameReceiver as the 2nd arg of
-         * addBufferPoolToFrameReceiver, which rejects (0xe00002e2) a value already used by a pool (the
-         * metadata pools use 0) -> must be non-zero. Value = sensor width (best guess). */
-        ivm_isp_put32(b, len, 0x20, c->w);
+        /* firmware buffer-pool ids per output (H10ISP Activate*OutputInFrameReceiver pass them to
+         * addBufferPoolToFrameReceiver; 0/2 are the metadata pools, duplicates fail with 0xe00002e2):
+         * cfg+0x10 primary scaler, +0x50 intermediate tap, +0x54 still image, +0x5c secondary scaler. */
+        ivm_isp_put32(b, len, 0x20, 3);
+        ivm_isp_put32(b, len, 0x60, 4);
+        ivm_isp_put32(b, len, 0x64, 5);
+        ivm_isp_put32(b, len, 0x6c, 6);
         ivm_isp_put16(b, len, 0x1e, 2 << 8);
         ivm_isp_put32(b, len, 0x70, 500000);
         ivm_isp_put32(b, len, 0x74, 10);
@@ -331,7 +334,8 @@ static void ivm_isp_doorbell(uint32_t gb, uint32_t bits)
                         if (!seen) {
                             seen = g_hash_table_new(g_direct_hash, g_direct_equal);
                         }
-                        if (!g_hash_table_contains(seen, GUINT_TO_POINTER((guint)op + 1))) {
+                        if (!g_hash_table_contains(seen, GUINT_TO_POINTER((guint)op + 1)) || op == 0x0117 ||
+                            op == 0x0b01 || op == 0x0b09 || op == 0x0b07 || op == 0x0115) {
                             uint32_t n, m = len < 0x200 ? len : 0x200;
                             GString* gs = g_string_new(NULL);
                             g_hash_table_add(seen, GUINT_TO_POINTER((guint)op + 1));
@@ -346,6 +350,12 @@ static void ivm_isp_doorbell(uint32_t gb, uint32_t bits)
                         address_space_write(&ivm_isp_dma_as, a, MEMTXATTRS_UNSPECIFIED, pk, len);
                     }
                     switch (lduw_le_p(pk + 4)) {
+                    case 0x0b01: /* primary scaler output config */
+                        ivm_isp_out_config(0, pk, len);
+                        break;
+                    case 0x0b09: /* secondary scaler output config */
+                        ivm_isp_out_config(1, pk, len);
+                        break;
                     case 0x0100: /* CH_START */
                         ivm_isp_stream(true);
                         break;
@@ -356,6 +366,7 @@ static void ivm_isp_doorbell(uint32_t gb, uint32_t bits)
                             ivm_isp_stream(false);
                         }
                         memset(ivm_isp_bufn, 0, sizeof(ivm_isp_bufn));
+                        memset(ivm_isp_poolid, 0, sizeof(ivm_isp_poolid));
                         break;
                     }
                     g_free(pk);
