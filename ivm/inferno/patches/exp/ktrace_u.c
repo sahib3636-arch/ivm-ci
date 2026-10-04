@@ -361,5 +361,15 @@ void HELPER(ivm_koslog)(CPUARMState* env, uint64_t pc)
             out[i] = ' ';
         }
     }
+    {   /* IVM_KOSLOG_GREP=substring: only matching lines count/print */
+        static const char* g = (const char*)1;
+        if (g == (const char*)1) {
+            g = getenv("IVM_KOSLOG_GREP");
+        }
+        if (g && !strstr(out, g)) {
+            n--;
+            return;
+        }
+    }
     fprintf(stderr, "[koslog] %s\n", out);
 }
