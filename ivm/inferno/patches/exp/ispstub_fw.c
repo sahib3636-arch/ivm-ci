@@ -110,7 +110,10 @@ static bool ivm_isp_cmd_respond(uint8_t* b, uint32_t len, uint16_t op)
         ivm_isp_put32(b, len, 0x50, 0x1);
         ivm_isp_put32(b, len, 0x58, 0x4);
         ivm_isp_put32(b, len, 0x5c, 0x10);
-        ivm_isp_put32(b, len, 0x60, 1);          /* num_presets */
+        {   /* num camera configs ("presets"): H10ISP output-preset tables index configs up to 0x14 (IMX503) */
+            const char* e = getenv("IVM_ISP_NCFG");
+            ivm_isp_put32(b, len, 0x60, e ? (uint32_t)atoi(e) : 24);
+        }
         ivm_isp_put32(b, len, 0x68, 0x44c0);
         ivm_isp_put32(b, len, 0x6c, 0x40);
         ivm_isp_put32(b, len, 0x70, 0x1);
@@ -138,7 +141,10 @@ static bool ivm_isp_cmd_respond(uint8_t* b, uint32_t len, uint16_t op)
         return true;
     case 0x0105:   /* CH_CAMERA_CONFIG_CURRENT_GET */
     case 0x0106: { /* CH_CAMERA_CONFIG_GET */
-        uint16_t w = 1920, h = 1440;
+        /* H10 sCIspCameraConfig = resp[0x10..0xac]: +0 w, +2 h (u16), +0xc max fps u16 8.8 (H10ISP
+         * InitSupportedFormatsForCaptureStream / ISP_GetGDCBesOutputValidRect). Sensor-size mode, 30 fps. */
+        uint16_t w = 4224, h = 3176;
+        ivm_isp_put16(b, len, 0x1c, 30 << 8);
         ivm_isp_put16(b, len, 0x10, w);
         ivm_isp_put16(b, len, 0x12, h);
         ivm_isp_put16(b, len, 0x14, w);
