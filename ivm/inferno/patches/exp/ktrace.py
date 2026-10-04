@@ -30,6 +30,11 @@ void HELPER(ivm_ktrace)(CPUARMState* env, uint64_t pc)
     fprintf(stderr, "[ktrace] %" PRIx64 " x0=%" PRIx64 " x1=%" PRIx64 " x2=%" PRIx64 " x3=%" PRIx64 " x4=%" PRIx64
             " x5=%" PRIx64 " x6=%" PRIx64 " x7=%" PRIx64 " lr=%" PRIx64 "\n", pc, env->xregs[0], env->xregs[1],
             env->xregs[2], env->xregs[3], env->xregs[4], env->xregs[5], env->xregs[6], env->xregs[7], env->xregs[30]);
+    if (getenv("IVM_KTRACE_SS")) {   /* x0 = arm_saved_state*: print saved user lr/sp/pc (+0xf8/+0x100/+0x108) */
+        uint64_t ss[3] = { 0, 0, 0 };
+        cpu_memory_rw_debug(env_cpu(env), env->xregs[0] + 0xf8, ss, sizeof(ss), false);
+        fprintf(stderr, "[ktrace]   ss lr=%" PRIx64 " sp=%" PRIx64 " pc=%" PRIx64 "\n", ss[0], ss[1], ss[2]);
+    }
 }
 ''' + (pathlib.Path(__file__).parent / 'ktrace_u.c').read_text())
 sub("target/arm/tcg/translate-a64.c", "    s->pc_curr      = pc;\n    insn            = arm_ldl_code(env, &s->base, pc, s->sctlr_b);\n",
