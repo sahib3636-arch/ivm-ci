@@ -59,13 +59,33 @@ void HELPER(ivm_slide)(CPUARMState* env, uint64_t pc)
 
 void HELPER(ivm_utrace)(CPUARMState* env, uint64_t pc)
 {
-    static long hits, max = -1;
+    static long     hits, max = -1;
+    static int64_t  lr_lo = -1;
+    static uint64_t lr_hi;
     if (max < 0) {
         const char* e = getenv("IVM_KTRACE_N");
         max = e ? atol(e) : 4000;
     }
+    if (lr_lo < 0) {   /* IVM_UTRACE_LR=lo-hi (unslid): only report calls whose caller (lr) is in range */
+        const char* e = getenv("IVM_UTRACE_LR");
+        char*       end;
+        lr_lo = 0;
+        if (e) {
+            lr_lo = (int64_t)strtoull(e, &end, 16);
+            lr_hi = (*end == '-') ? strtoull(end + 1, NULL, 16) : 0;
+        }
+    }
+    if (lr_hi && (env->xregs[30] - ivm_dsc_slide < (uint64_t)lr_lo || env->xregs[30] - ivm_dsc_slide >= lr_hi)) {
+        return;
+    }
     if (hits++ >= max) {
         return;
+    }
+    {   /* 8 bytes at x1/x2 (CFNumberCreate valuePtr etc.) */
+        uint64_t m1 = 0, m2 = 0;
+        ivm_u_read(env, env->xregs[1], &m1, 8);
+        ivm_u_read(env, env->xregs[2], &m2, 8);
+        fprintf(stderr, "[utrace]   [x1]=%" PRIx64 " [x2]=%" PRIx64 "\n", m1, m2);
     }
     fprintf(stderr, "[utrace] %" PRIx64 " x0=%" PRIx64 " x1=%" PRIx64 " x2=%" PRIx64 " x3=%" PRIx64 " x4=%" PRIx64
             " x5=%" PRIx64 " x6=%" PRIx64 " x7=%" PRIx64 " lr=%" PRIx64 " sp=%" PRIx64 "\n", pc - ivm_dsc_slide,
