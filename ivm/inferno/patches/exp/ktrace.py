@@ -34,6 +34,16 @@ void HELPER(ivm_ktrace)(CPUARMState* env, uint64_t pc)
         uint64_t ss[3] = { 0, 0, 0 };
         cpu_memory_rw_debug(env_cpu(env), env->xregs[0] + 0xf8, ss, sizeof(ss), false);
         fprintf(stderr, "[ktrace]   ss lr=%" PRIx64 " sp=%" PRIx64 " pc=%" PRIx64 "\n", ss[0], ss[1], ss[2]);
+        {   /* walk the saved user frame-pointer chain */
+            uint64_t fp = 0, fr[2];
+            int      d;
+            cpu_memory_rw_debug(env_cpu(env), env->xregs[0] + 0xf0, &fp, 8, false);
+            for (d = 0; d < 24 && fp && !(fp & 7); d++) {
+                if (cpu_memory_rw_debug(env_cpu(env), fp, fr, sizeof(fr), false)) { break; }
+                fprintf(stderr, "[ktrace]   bt#%d %" PRIx64 "\n", d, fr[1] & 0xfffffffffULL);
+                fp = fr[0];
+            }
+        }
     }
 }
 ''' + (pathlib.Path(__file__).parent / 'ktrace_u.c').read_text())
