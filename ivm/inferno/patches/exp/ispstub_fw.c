@@ -81,6 +81,11 @@ static void ivm_isp_doorbell(uint32_t gb, uint32_t bits)
             done |= 1u << ivm_isp_chans[i].src;
         }
     }
+    if (done && GPOINTER_TO_UINT(g_hash_table_lookup(ivm_isp_regs, GUINT_TO_POINTER(IVM_ISP_GPIO(0)))) == 0xf7fbdff9u) {
+        /* ISP_Suspend: GPIO0 = 0xf7fbdff9 + suspend command -> fw parks and answers 0x8042006 */
+        ivm_isp_set(IVM_ISP_GPIO(0), 0x8042006);
+        fprintf(stderr, "[ivm-isp] fw: suspend -> parked\n");
+    }
     if (done) {
         ivm_isp_pend |= done;
         ivm_isp_set(gb - 0x4000u, ivm_isp_pend);
