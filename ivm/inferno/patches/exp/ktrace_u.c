@@ -31,6 +31,23 @@ static void ivm_u_cstr(CPUARMState* env, uint64_t va, char* out, size_t max)
     }
 }
 
+
+/* constant CFString {isa, info(0x7c8/0x7d0), char* ptr, len}: return 1 + text, or 2 + unslid ptr if unreadable */
+static int ivm_u_cfstr(CPUARMState* env, uint64_t obj, char* out, size_t max, uint64_t* uptr)
+{
+    uint64_t w[4];
+    ivm_u_read(env, obj, w, sizeof(w));
+    if (!w[0] || ((w[1] & 0xff) != 0xc8 && (w[1] & 0xff) != 0xd0) || w[3] > 4096 || !w[2]) {
+        return 0;
+    }
+    ivm_u_cstr(env, w[2], out, max);
+    if (out[0]) {
+        return 1;
+    }
+    *uptr = w[2] - ivm_dsc_slide;
+    return 2;
+}
+
 void HELPER(ivm_slide)(CPUARMState* env, uint64_t pc)
 {
     uint64_t s = env->xregs[0];
@@ -54,6 +71,19 @@ void HELPER(ivm_utrace)(CPUARMState* env, uint64_t pc)
             " x5=%" PRIx64 " x6=%" PRIx64 " x7=%" PRIx64 " lr=%" PRIx64 " sp=%" PRIx64 "\n", pc - ivm_dsc_slide,
             env->xregs[0], env->xregs[1], env->xregs[2], env->xregs[3], env->xregs[4], env->xregs[5],
             env->xregs[6], env->xregs[7], env->xregs[30] - ivm_dsc_slide, env->xregs[31]);
+    {   /* decode constant-CFString arguments (property keys) */
+        int  r;
+        char t[160];
+        for (r = 0; r < 4; r++) {
+            uint64_t up = 0;
+            int      k = ivm_u_cfstr(env, env->xregs[r], t, sizeof(t), &up);
+            if (k == 1) {
+                fprintf(stderr, "[utrace]   x%d=\"%s\"\n", r, t);
+            } else if (k == 2) {
+                fprintf(stderr, "[utrace]   x%d=cfs@%" PRIx64 "\n", r, up);
+            }
+        }
+    }
 }
 
 /* _os_log_impl(void *dso, os_log_t log, os_log_type_t type, const char *format, uint8_t *buf, uint32_t size)
@@ -116,6 +146,21 @@ void HELPER(ivm_oslog)(CPUARMState* env, uint64_t pc)
                 } else {
                     o += snprintf(out + o, sizeof(out) - o, " S:%" PRIx64, v - ivm_dsc_slide);
                 }
+            } else if ((desc >> 4) == 4) {
+                uint64_t up = 0;
+                int      r = ivm_u_cfstr(env, v, s, sizeof(s), &up);
+                if (r == 1) {
+                    for (i = 0; s[i]; i++) {
+                        if (s[i] == ' ' || s[i] == '|') {
+                            s[i] = '_';
+                        }
+                    }
+                    o += snprintf(out + o, sizeof(out) - o, " s:%s", s);
+                } else if (r == 2) {
+                    o += snprintf(out + o, sizeof(out) - o, " S:%" PRIx64, up);
+                } else {
+                    o += snprintf(out + o, sizeof(out) - o, " 4:8:%" PRIx64, v);
+                }
             } else {
                 o += snprintf(out + o, sizeof(out) - o, " %x:%u:%" PRIx64, desc >> 4, isz, v);
             }
@@ -175,9 +220,18 @@ void HELPER(ivm_oslog)(CPUARMState* env, uint64_t pc)
             ivm_u_cstr(env, v, s, sizeof(s));
             o += snprintf(out + o, sizeof(out) - o, "%s", s);
             break;
-        case 4:                            /* ObjC/CF object */
-            o += snprintf(out + o, sizeof(out) - o, "<obj %" PRIx64 ">", v);
+        case 4: {                          /* ObjC/CF object */
+            uint64_t up = 0;
+            int      r = ivm_u_cfstr(env, v, s, sizeof(s), &up);
+            if (r == 1) {
+                o += snprintf(out + o, sizeof(out) - o, "%s", s);
+            } else if (r == 2) {
+                o += snprintf(out + o, sizeof(out) - o, "<cfs@%" PRIx64 ">", up);
+            } else {
+                o += snprintf(out + o, sizeof(out) - o, "<obj %" PRIx64 ">", v);
+            }
             break;
+        }
         default:
             if (isz == 4 && v & 0x80000000u && (conv == 'd' || conv == 'i')) {
                 v |= 0xffffffff00000000ull;
