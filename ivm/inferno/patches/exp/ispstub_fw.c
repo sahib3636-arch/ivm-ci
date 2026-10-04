@@ -44,6 +44,118 @@ static void ivm_isp_set(uint32_t off, uint32_t val)
     g_hash_table_insert(ivm_isp_regs, GUINT_TO_POINTER(off), GUINT_TO_POINTER(val));
 }
 
+/* ---- command responses (Asahi isp-cmd.h layouts: u64 opcode word, then payload) ---- */
+static void ivm_isp_put32(uint8_t* b, uint32_t len, uint32_t off, uint32_t v)
+{
+    if (off + 4 <= len) {
+        stl_le_p(b + off, v);
+    }
+}
+
+static void ivm_isp_put16(uint8_t* b, uint32_t len, uint32_t off, uint16_t v)
+{
+    if (off + 2 <= len) {
+        stw_le_p(b + off, v);
+    }
+}
+
+static void ivm_isp_putstr(uint8_t* b, uint32_t len, uint32_t off, const char* str, uint32_t max)
+{
+    uint32_t n = strlen(str);
+    if (n > max - 1) {
+        n = max - 1;
+    }
+    if (off + n < len) {
+        memcpy(b + off, str, n);
+    }
+}
+
+/* channel -> sensor (platform table, iPhone 11 / sensor-type 0xaf: 0 rear, 2 frnt, 3 firc (Face ID IR), 4 resw) */
+static uint16_t ivm_isp_sensor_id(uint32_t ch)
+{
+    switch (ch) {
+    case 0: return 0x0503;   /* back wide */
+    case 2: return 0x0330;   /* front */
+    case 4: return 0x0372;   /* back super wide */
+    default: return 0;       /* 1, 5 absent; 3 (IR) not modelled */
+    }
+}
+
+static bool ivm_isp_cmd_respond(uint8_t* b, uint32_t len, uint16_t op)
+{
+    uint32_t ch = len >= 12 ? ldl_le_p(b + 8) : 0;
+    switch (op) {
+    case 0x0003:   /* CONFIG_GET */
+        ivm_isp_put32(b, len, 0x08, 24000000);   /* timestamp_freq */
+        ivm_isp_put32(b, len, 0x0c, 6);          /* num_channels (driver max 6) */
+        return true;
+    case 0x0006:   /* BUILDINFO */
+        ivm_isp_putstr(b, len, 0x28, "Oct  4 2026", 0x20);
+        ivm_isp_putstr(b, len, 0x48, "ivm-hle-isp 1.0", 0x60);
+        return true;
+    case 0x010d:   /* CH_INFO_GET */
+        if (!ivm_isp_sensor_id(ch)) {
+            return false;
+        }
+        ivm_isp_put32(b, len, 0x0c, 0x7da0001);
+        ivm_isp_put32(b, len, 0x10, 0x300ac);
+        ivm_isp_put32(b, len, 0x14, 0x40007);
+        ivm_isp_put32(b, len, 0x18, 0x5);
+        ivm_isp_put32(b, len, 0x1c, 0x1);
+        ivm_isp_put32(b, len, 0x20, ivm_isp_sensor_id(ch));
+        ivm_isp_put32(b, len, 0x24, 0x7);
+        ivm_isp_put32(b, len, 0x28, 0x1);
+        ivm_isp_put32(b, len, 0x2c, 0x7);
+        ivm_isp_put32(b, len, 0x4c, 0x10000);
+        ivm_isp_put32(b, len, 0x50, 0x1);
+        ivm_isp_put32(b, len, 0x58, 0x4);
+        ivm_isp_put32(b, len, 0x5c, 0x10);
+        ivm_isp_put32(b, len, 0x60, 1);          /* num_presets */
+        ivm_isp_put32(b, len, 0x68, 0x44c0);
+        ivm_isp_put32(b, len, 0x6c, 0x40);
+        ivm_isp_put32(b, len, 0x70, 0x1);
+        ivm_isp_put32(b, len, 0x74, 0x2);
+        ivm_isp_put32(b, len, 0x78, 0x4000);
+        ivm_isp_put32(b, len, 0x7c, 0x40);
+        ivm_isp_put32(b, len, 0x80, 0x1);
+        ivm_isp_put32(b, len, 0x84, 0x4d564900u | ch);   /* sensor SN (8 bytes) */
+        ivm_isp_put32(b, len, 0x88, 0x2026);
+        ivm_isp_put32(b, len, 0x8c, 0x36);
+        ivm_isp_put32(b, len, 0x98, 24000000);
+        {
+            char sn[20];
+            snprintf(sn, sizeof(sn), "IVMCAM%02u0001", ch);
+            ivm_isp_putstr(b, len, 0x9e, sn, 18);
+        }
+        ivm_isp_put32(b, len, 0xb4, 0x8);
+        ivm_isp_put32(b, len, 0xc0, 0x4);
+        ivm_isp_put32(b, len, 0xdc, 0xff0000);
+        ivm_isp_put32(b, len, 0xe0, 0xc00);
+        ivm_isp_put32(b, len, 0xe8, 0x1c);
+        ivm_isp_put32(b, len, 0xec, 0x640);
+        ivm_isp_put32(b, len, 0xf0, 0x4);
+        ivm_isp_put32(b, len, 0xf4, 0x4);
+        return true;
+    case 0x0105:   /* CH_CAMERA_CONFIG_CURRENT_GET */
+    case 0x0106: { /* CH_CAMERA_CONFIG_GET */
+        uint16_t w = 1920, h = 1440;
+        ivm_isp_put16(b, len, 0x10, w);
+        ivm_isp_put16(b, len, 0x12, h);
+        ivm_isp_put16(b, len, 0x14, w);
+        ivm_isp_put16(b, len, 0x16, h);
+        ivm_isp_put32(b, len, 0x60, 24000000);   /* sensor_clk */
+        ivm_isp_put32(b, len, 0x74, 24000000);   /* timestamp_freq */
+        ivm_isp_put32(b, len, 0xc0, w);
+        ivm_isp_put32(b, len, 0xc4, h);
+        ivm_isp_put32(b, len, 0xd0, w);
+        ivm_isp_put32(b, len, 0xd4, h);
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
 static void ivm_isp_ring_rw(uint32_t ring, uint32_t slot, uint32_t* w0, bool wr)
 {
     hwaddr a = ivm_isp_fw_phys + ring + slot * 0x40u;
@@ -86,6 +198,18 @@ static void ivm_isp_doorbell(uint32_t gb, uint32_t bits)
                 }
                 fprintf(stderr, "[ivm-isp] fw: cmd #%ld %s[%u] addr=0x%x len=0x%x op=0x%04x [%s] -> ack\n", ivm_isp_ncmd,
                         ivm_isp_chans[i].name, k, le32_to_cpu(w[0]), le32_to_cpu(w[1]), lduw_le_p(c + 4), hex);
+            }
+            if (ivm_isp_dma_ok) {
+                uint32_t len = le32_to_cpu(w[1]);
+                uint32_t a = le32_to_cpu(w[0]) & ~3u;
+                if (len >= 8 && len <= 0x1000) {
+                    uint8_t* pk = g_malloc0(len);
+                    address_space_read(&ivm_isp_dma_as, a, MEMTXATTRS_UNSPECIFIED, pk, len);
+                    if (ivm_isp_cmd_respond(pk, len, lduw_le_p(pk + 4))) {
+                        address_space_write(&ivm_isp_dma_as, a, MEMTXATTRS_UNSPECIFIED, pk, len);
+                    }
+                    g_free(pk);
+                }
             }
             w0 |= 1;
             ivm_isp_ring_rw(ring, k, &w0, true);
