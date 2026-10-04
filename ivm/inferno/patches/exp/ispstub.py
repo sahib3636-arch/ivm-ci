@@ -222,3 +222,16 @@ sub(S, "    if (src_ok && dst_ok) { apple_scaler_process(scaler, &src, &dst); }\
        "                    (unsigned long long)dst.base[LUMA], (unsigned long long)dst.base[CHROMA], dst_ok, scaler->flip_rotate_cfg);\n"
        "        }\n    }\n"
        "    if (src_ok && dst_ok) { apple_scaler_process(scaler, &src, &dst); }\n")
+
+# s39 isp44: shadow every scaler register write; dump the source register block for unsupported (compressed) jobs
+sub(S, "    // SCALER_INFO(\"0x\" HWADDR_FMT_plx \" <- 0x\" HWADDR_FMT_plx, addr, data);\n\n    addr >>= 2;\n",
+       "    // SCALER_INFO(\"0x\" HWADDR_FMT_plx \" <- 0x\" HWADDR_FMT_plx, addr, data);\n\n    addr >>= 2;\n"
+       "    if (addr < 0x200) { ivm_msr_shadow[addr] = (uint32_t)data; }\n")
+sub(S, "static void apple_scaler_bh(void* opaque)\n",
+       "static uint32_t ivm_msr_shadow[0x200];   /* ivm: last value written to each scaler register */\n"
+       "static void apple_scaler_bh(void* opaque)\n")
+sub(S, "                    (unsigned long long)dst.base[LUMA], (unsigned long long)dst.base[CHROMA], dst_ok, scaler->flip_rotate_cfg);\n",
+       "                    (unsigned long long)dst.base[LUMA], (unsigned long long)dst.base[CHROMA], dst_ok, scaler->flip_rotate_cfg);\n"
+       "            if (!src_ok) {\n                fprintf(stderr, \"[ivm-msr] regs\");\n"
+       "                for (int i = 0x100 / 4; i < 0x200 / 4; i++) { if (ivm_msr_shadow[i]) fprintf(stderr, \" %03x=%x\", i * 4, ivm_msr_shadow[i]); }\n"
+       "                fprintf(stderr, \"\\n\");\n            }\n")
