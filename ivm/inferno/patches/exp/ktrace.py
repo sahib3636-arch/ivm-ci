@@ -15,7 +15,7 @@ def sub(rel, old, new):
 
 sub("target/arm/tcg/helper-a64.h", "DEF_HELPER_FLAGS_2(udiv64, TCG_CALL_NO_RWG_SE, i64, i64, i64)\n",
     "DEF_HELPER_FLAGS_2(udiv64, TCG_CALL_NO_RWG_SE, i64, i64, i64)\nDEF_HELPER_2(ivm_ktrace, void, env, i64)\n"
-    "DEF_HELPER_2(ivm_slide, void, env, i64)\nDEF_HELPER_2(ivm_utrace, void, env, i64)\nDEF_HELPER_2(ivm_oslog, void, env, i64)\nDEF_HELPER_2(ivm_figlog, void, env, i64)\nDEF_HELPER_2(ivm_koslog, void, env, i64)\nDEF_HELPER_2(ivm_lockfix, void, env, i64)\n")
+    "DEF_HELPER_2(ivm_slide, void, env, i64)\nDEF_HELPER_2(ivm_utrace, void, env, i64)\nDEF_HELPER_2(ivm_oslog, void, env, i64)\nDEF_HELPER_2(ivm_figlog, void, env, i64)\nDEF_HELPER_2(ivm_koslog, void, env, i64)\nDEF_HELPER_2(ivm_lockfix, void, env, i64)\nDEF_HELPER_2(ivm_uskip, void, env, i64)\n")
 p = root / "target/arm/tcg/helper-a64.c"
 p.write_text(p.read_text() + r'''
 /* ---- iVM ktrace (exp/ktrace.py) ---- */
@@ -112,6 +112,13 @@ sub("target/arm/tcg/translate-a64.c", "    s->pc_curr      = pc;\n    insn      
             extern uint64_t ivm_lockfix_pc;
             if (ivm_lockfix_pc && upc == ivm_lockfix_pc) {
                 gen_helper_ivm_lockfix(tcg_env, tcg_constant_i64(pc));
+            }
+            {
+                extern int      ivm_uskip_n;
+                extern uint64_t ivm_uskip_pc[8];
+                for (k = 0; k < ivm_uskip_n; k++) {
+                    if (ivm_uskip_pc[k] == upc) { gen_helper_ivm_uskip(tcg_env, tcg_constant_i64(pc)); break; }
+                }
             }
             if (ivm_oslog_pc && upc == ivm_oslog_pc) {
                 gen_helper_ivm_oslog(tcg_env, tcg_constant_i64(pc));
