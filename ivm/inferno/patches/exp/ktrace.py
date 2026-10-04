@@ -14,7 +14,8 @@ def sub(rel, old, new):
     p.write_text(s.replace(old, new))
 
 sub("target/arm/tcg/helper-a64.h", "DEF_HELPER_FLAGS_2(udiv64, TCG_CALL_NO_RWG_SE, i64, i64, i64)\n",
-    "DEF_HELPER_FLAGS_2(udiv64, TCG_CALL_NO_RWG_SE, i64, i64, i64)\nDEF_HELPER_2(ivm_ktrace, void, env, i64)\n")
+    "DEF_HELPER_FLAGS_2(udiv64, TCG_CALL_NO_RWG_SE, i64, i64, i64)\nDEF_HELPER_2(ivm_ktrace, void, env, i64)\n"
+    "DEF_HELPER_2(ivm_slide, void, env, i64)\nDEF_HELPER_2(ivm_utrace, void, env, i64)\nDEF_HELPER_2(ivm_oslog, void, env, i64)\n")
 p = root / "target/arm/tcg/helper-a64.c"
 p.write_text(p.read_text() + r'''
 /* ---- iVM ktrace (exp/ktrace.py) ---- */
@@ -30,7 +31,7 @@ void HELPER(ivm_ktrace)(CPUARMState* env, uint64_t pc)
             " x5=%" PRIx64 " x6=%" PRIx64 " x7=%" PRIx64 " lr=%" PRIx64 "\n", pc, env->xregs[0], env->xregs[1],
             env->xregs[2], env->xregs[3], env->xregs[4], env->xregs[5], env->xregs[6], env->xregs[7], env->xregs[30]);
 }
-''')
+''' + (pathlib.Path(__file__).parent / 'ktrace_u.c').read_text())
 sub("target/arm/tcg/translate-a64.c", "    s->pc_curr      = pc;\n    insn            = arm_ldl_code(env, &s->base, pc, s->sctlr_b);\n",
     r'''    {   /* ivm ktrace (exp/ktrace.py) */
         static int      ivm_kt_n = -1;
@@ -47,6 +48,38 @@ sub("target/arm/tcg/translate-a64.c", "    s->pc_curr      = pc;\n    insn      
         }
         for (k = 0; k < ivm_kt_n; k++) {
             if (ivm_kt_pc[k] == pc) { gen_helper_ivm_ktrace(tcg_env, tcg_constant_i64(pc)); break; }
+        }
+        static int      ivm_ut_n = -1;
+        static uint64_t ivm_ut_pc[32], ivm_slide_pc, ivm_oslog_pc;
+        extern uint64_t ivm_dsc_slide;
+        if (ivm_ut_n < 0) {
+            const char* e = getenv("IVM_UTRACE");
+            ivm_ut_n = 0;
+            while (e && *e && ivm_ut_n < 32) {
+                char* end;
+                ivm_ut_pc[ivm_ut_n++] = strtoull(e, &end, 16);
+                e = (*end == ',') ? end + 1 : NULL;
+            }
+            e = getenv("IVM_SLIDEPC");
+            ivm_slide_pc = e ? strtoull(e, NULL, 16) : 0;
+            e = getenv("IVM_OSLOG");
+            ivm_oslog_pc = e ? strtoull(e, NULL, 16) : 0;
+            e = getenv("IVM_DSC_SLIDE");
+            if (e) {
+                ivm_dsc_slide = strtoull(e, NULL, 16);
+            }
+        }
+        if (ivm_slide_pc && pc == ivm_slide_pc) {
+            gen_helper_ivm_slide(tcg_env, tcg_constant_i64(pc));
+        }
+        if (ivm_dsc_slide && s->current_el == 0) {
+            uint64_t upc = pc - ivm_dsc_slide;
+            if (ivm_oslog_pc && upc == ivm_oslog_pc) {
+                gen_helper_ivm_oslog(tcg_env, tcg_constant_i64(pc));
+            }
+            for (k = 0; k < ivm_ut_n; k++) {
+                if (ivm_ut_pc[k] == upc) { gen_helper_ivm_utrace(tcg_env, tcg_constant_i64(pc)); break; }
+            }
         }
     }
     s->pc_curr      = pc;
