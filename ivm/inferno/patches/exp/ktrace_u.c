@@ -373,3 +373,46 @@ void HELPER(ivm_koslog)(CPUARMState* env, uint64_t pc)
     }
     fprintf(stderr, "[koslog] %s\n", out);
 }
+
+/* ---- IVM_LOCKFIX=<unslid pc>,<xreg>,<signed hex off>: at pc, if w0 != 0 (error path), release the
+ * os_unfair_lock at [x<reg> + off] by storing 0.  Works around Apple's lock leak in
+ * FigPhotoCompressionSessionCopyJPEGEncodeSession when FigPhotoJPEGEncodeSessionCreate fails (no HW JPEG):
+ * the next call re-locks on the same thread -> __os_unfair_lock_recursive_abort -> mediaserverd SIGTRAP. */
+uint64_t ivm_lockfix_pc;
+static int     ivm_lockfix_reg;
+static int64_t ivm_lockfix_off;
+static long    ivm_lockfix_hits;
+static void __attribute__((constructor)) ivm_lockfix_init(void)
+{
+    const char* e = getenv("IVM_LOCKFIX");
+    char*       end;
+    if (!e) {
+        return;
+    }
+    ivm_lockfix_pc = strtoull(e, &end, 16);
+    if (*end == ',') {
+        ivm_lockfix_reg = (int)strtol(end + 1, &end, 10);
+    }
+    if (*end == ',') {
+        ivm_lockfix_off = strtoll(end + 1, &end, 16);
+    }
+    if (ivm_lockfix_reg < 0 || ivm_lockfix_reg > 30) {
+        ivm_lockfix_pc = 0;
+    }
+}
+void HELPER(ivm_lockfix)(CPUARMState* env, uint64_t pc)
+{
+    uint32_t v = 0, z = 0;
+    uint64_t a;
+    if ((uint32_t)env->xregs[0] == 0) {
+        return;
+    }
+    a = env->xregs[ivm_lockfix_reg] + ivm_lockfix_off;
+    cpu_memory_rw_debug(env_cpu(env), a, &v, 4, false);
+    if (v) {
+        cpu_memory_rw_debug(env_cpu(env), a, &z, 4, true);
+    }
+    if (ivm_lockfix_hits++ < 50) {
+        fprintf(stderr, "[lockfix] pc=%" PRIx64 " err=%d lock@%" PRIx64 " was %x -> 0\n", pc, (int32_t)env->xregs[0], a, v);
+    }
+}
