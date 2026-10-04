@@ -22,6 +22,39 @@ typedef struct {
 
 static IvmIspBuf  ivm_isp_bufq[IVM_ISP_NPOOL][IVM_ISP_MAXBUF];
 static uint32_t   ivm_isp_bufn[IVM_ISP_NPOOL];
+static uint32_t   ivm_isp_poolid[IVM_ISP_NPOOL];  /* slot -> firmware pool id (+1, 0 = free) */
+/* output geometry from CH_OUTPUT_CONFIG_SET-like commands: 0x0b01 primary (pool 3), 0x0b09 secondary (pool 6):
+ * {.., +0xc w, +0x10 h, .., +0x1c stride0, +0x20 stride1} */
+static uint32_t   ivm_isp_out_w[8], ivm_isp_out_h[8], ivm_isp_out_s0[8], ivm_isp_out_s1[8];
+
+static int ivm_isp_pool_slot(uint32_t id)
+{
+    int i;
+    for (i = 0; i < IVM_ISP_NPOOL; i++) {
+        if (ivm_isp_poolid[i] == id + 1) {
+            return i;
+        }
+    }
+    for (i = 0; i < IVM_ISP_NPOOL; i++) {
+        if (!ivm_isp_poolid[i]) {
+            ivm_isp_poolid[i] = id + 1;
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void ivm_isp_out_config(uint32_t idx, const uint8_t* pk, uint32_t len)
+{
+    if (idx < 8 && len >= 0x24) {
+        ivm_isp_out_w[idx]  = ldl_le_p(pk + 0xc);
+        ivm_isp_out_h[idx]  = ldl_le_p(pk + 0x10);
+        ivm_isp_out_s0[idx] = ldl_le_p(pk + 0x1c);
+        ivm_isp_out_s1[idx] = ldl_le_p(pk + 0x20);
+        fprintf(stderr, "[ivm-isp] fw: output %u = %ux%u strides %u/%u\n", idx, ivm_isp_out_w[idx], ivm_isp_out_h[idx],
+                ivm_isp_out_s0[idx], ivm_isp_out_s1[idx]);
+    }
+}
 static uint32_t   ivm_isp_sm_addr, ivm_isp_sm_state; /* 0 none, 1 requested, 2 ready */
 static uint32_t   ivm_isp_t2h_slot, ivm_isp_frames;
 static bool       ivm_isp_streaming;
@@ -72,13 +105,16 @@ static void ivm_isp_h2t(uint32_t addr)
         IvmIspBuf b;
         uint32_t  pool;
         address_space_read(&ivm_isp_dma_as, addr + 8 + i * 0x30, MEMTXATTRS_UNSPECIFIED, b.e, 0x30);
-        pool = ldl_le_p(b.e + 0x24) & 0xfffffff;
-        if (pool >= IVM_ISP_NPOOL || ivm_isp_bufn[pool] >= IVM_ISP_MAXBUF) {
-            continue;
+        {
+            int sl = ivm_isp_pool_slot(ldl_le_p(b.e + 0x24) & 0xfffffff);
+            if (sl < 0 || ivm_isp_bufn[sl] >= IVM_ISP_MAXBUF) {
+                continue;
+            }
+            pool = (uint32_t)sl;
         }
         if (ivm_isp_frames < 2 || ivm_isp_bufn[pool] == 0) {
-            fprintf(stderr, "[ivm-isp] fw: h2t pool=%u iova=%08x/%08x/%08x len=%08x/%08x/%08x/%08x f20=%x tag=%" PRIx64 "\n",
-                    pool, ldl_le_p(b.e), ldl_le_p(b.e + 4), ldl_le_p(b.e + 8), ldl_le_p(b.e + 0x10),
+            fprintf(stderr, "[ivm-isp] fw: h2t slot=%u pool=%u iova=%08x/%08x/%08x len=%08x/%08x/%08x/%08x f20=%x tag=%" PRIx64 "\n",
+                    pool, ldl_le_p(b.e + 0x24) & 0xfffffff, ldl_le_p(b.e), ldl_le_p(b.e + 4), ldl_le_p(b.e + 8), ldl_le_p(b.e + 0x10),
                     ldl_le_p(b.e + 0x14), ldl_le_p(b.e + 0x18), ldl_le_p(b.e + 0x1c), ldl_le_p(b.e + 0x20),
                     ldq_le_p(b.e + 0x28));
         }
@@ -112,26 +148,36 @@ static void ivm_isp_sm_poll(void)
     }
 }
 
-/* synthetic picture: luma ramp + moving bar, chroma neutral (only within the first `lim` bytes) */
-static void ivm_isp_fill(uint32_t iova, uint32_t lim)
+/* synthetic picture into a 420 bi-planar buffer: luma ramp + moving bars, chroma colour bands */
+static void ivm_isp_fill_yuv(const IvmIspBuf* b, uint32_t out)
 {
     static uint8_t* row;
-    uint32_t        w = 1504, y, rows, off = 0;
-    const char*     e = getenv("IVM_ISP_FILL");
-    if (e) {
-        lim = (uint32_t)strtoul(e, NULL, 0);
+    uint32_t        w = ivm_isp_out_w[out], h = ivm_isp_out_h[out], s0 = ivm_isp_out_s0[out], s1 = ivm_isp_out_s1[out];
+    uint32_t        y0 = ldl_le_p(b->e), y1 = ldl_le_p(b->e + 4), x, y;
+    if (!w || !h || w > 8192 || h > 8192 || s0 < w || !y0) {
+        return;
     }
     if (!row) {
-        row = g_malloc(4096);
+        row = g_malloc(8192);
     }
-    rows = lim / w;
-    for (y = 0; y < rows; y++, off += w) {
-        uint32_t x;
+    for (y = 0; y < h; y++) {
         for (x = 0; x < w; x++) {
-            uint32_t bar = ((x + ivm_isp_frames * 16) / 64) & 1;
-            row[x]       = (uint8_t)(32 + (y * 160 / (rows ? rows : 1)) + (bar ? 40 : 0));
+            uint32_t bar = ((x + ivm_isp_frames * 8) / 96) & 1;
+            row[x]       = (uint8_t)(40 + (y * 150) / h + (bar ? 30 : 0));
         }
-        address_space_write(&ivm_isp_dma_as, iova + off, MEMTXATTRS_UNSPECIFIED, row, w);
+        address_space_write(&ivm_isp_dma_as, y0 + y * s0, MEMTXATTRS_UNSPECIFIED, row, w);
+    }
+    if (y1 && s1 >= w) {
+        for (y = 0; y < h / 2; y++) {
+            for (x = 0; x + 1 < w; x += 2) {
+                uint32_t band = (x * 6) / w;           /* 6 colour bands */
+                static const uint8_t uv[6][2] = { { 90, 240 }, { 54, 34 }, { 240, 110 }, { 128, 128 },
+                                                  { 200, 200 }, { 60, 160 } };
+                row[x]     = uv[band][0];
+                row[x + 1] = uv[band][1];
+            }
+            address_space_write(&ivm_isp_dma_as, y1 + y * s1, MEMTXATTRS_UNSPECIFIED, row, w & ~1u);
+        }
     }
 }
 
@@ -166,8 +212,13 @@ static void ivm_isp_frame_tick(void* opaque)
         }
         b = ivm_isp_bufq[pool][0];
         memmove(&ivm_isp_bufq[pool][0], &ivm_isp_bufq[pool][1], (--ivm_isp_bufn[pool]) * sizeof(IvmIspBuf));
-        if (getenv("IVM_ISP_FILL") && pool == (uint32_t)atoi(getenv("IVM_ISP_FILLPOOL") ?: "99")) {
-            ivm_isp_fill(ldl_le_p(b.e), 0);
+        if (!getenv("IVM_ISP_NOFILL")) {
+            uint32_t id = ivm_isp_poolid[pool] - 1;
+            if (id == 3) {
+                ivm_isp_fill_yuv(&b, 0);
+            } else if (id == 6) {
+                ivm_isp_fill_yuv(&b, 1);
+            }
         }
         memcpy(msg + 8 + n * 0x30, b.e, 0x30);
         n++;
