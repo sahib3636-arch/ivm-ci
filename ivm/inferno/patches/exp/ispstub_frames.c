@@ -1,4 +1,5 @@
 #include "qemu/timer.h"
+#include <sys/mman.h>
 /* ---- fake frame delivery (s39, exp/ispstub_frames.c, inlined by ispstub.py into ispstub_fw.c) ----
  * BUF_H2T (host -> fw): msg {u32 type 1, u32 count, count x 0x30 entries: +0 plane iova[4], +0x10 u32[4],
  *   +0x20 u32, +0x24 pool, +0x28 u64 tag}.  Entries are queued per pool.
@@ -148,6 +149,170 @@ static void ivm_isp_sm_poll(void)
     }
 }
 
+/* ---- camera feed (s39 isp48): IVM_ISP_FEED=<file> shared with the Android app (same uid) ----
+ * layout (LE): +0 'IVMC' magic, +4 version 1, +8 engine: wanted camera (0 = none, chan+1), +12 engine heartbeat,
+ * +16 app seq (seqlock: odd while writing), +20 w, +24 h, +28 flags (bit0 mirror x), +32 app ms timestamp (u64),
+ * +64 NV12 frame: Y w*h then interleaved CbCr (w/2*h/2*2), full range.  Max 1920x1440.
+ * The engine maps the file, publishes which channel iOS streams, and samples the newest frame (nearest scale). */
+#define IVM_FEED_HDR  64u
+#define IVM_FEED_MAXW 1920u
+#define IVM_FEED_MAXH 1440u
+#define IVM_FEED_SIZE (IVM_FEED_HDR + IVM_FEED_MAXW * IVM_FEED_MAXH * 3u / 2u)
+static uint32_t ivm_isp_cur_chan;
+static uint8_t* ivm_feed;
+static int      ivm_feed_state;   /* 0 untried, 1 mapped, -1 off */
+static uint8_t* ivm_feed_copy;    /* stable snapshot of the newest frame */
+static uint32_t ivm_feed_cw, ivm_feed_ch, ivm_feed_cseq, ivm_feed_cflags;
+
+static void ivm_feed_open(void)
+{
+    const char* path = getenv("IVM_ISP_FEED");
+    ivm_feed_state = -1;
+    if (!path || !*path) {
+        return;
+    }
+    int fd = open(path, O_RDWR | O_CREAT, 0600);
+    if (fd < 0) {
+        fprintf(stderr, "[ivm-isp] feed: open %s failed: %s\n", path, strerror(errno));
+        return;
+    }
+    if (ftruncate(fd, IVM_FEED_SIZE) != 0) {
+        fprintf(stderr, "[ivm-isp] feed: ftruncate failed: %s\n", strerror(errno));
+        close(fd);
+        return;
+    }
+    void* m = mmap(NULL, IVM_FEED_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    close(fd);
+    if (m == MAP_FAILED) {
+        fprintf(stderr, "[ivm-isp] feed: mmap failed: %s\n", strerror(errno));
+        return;
+    }
+    ivm_feed = m;
+    if (ldl_le_p(ivm_feed) != 0x434d5649) {
+        memset(ivm_feed, 0, IVM_FEED_HDR);
+        stl_le_p(ivm_feed + 4, 1);
+        stl_le_p(ivm_feed, 0x434d5649);
+    }
+    ivm_feed_state = 1;
+    fprintf(stderr, "[ivm-isp] feed: mapped %s (%u bytes)\n", path, IVM_FEED_SIZE);
+    if (getenv("IVM_ISP_FEED_TEST")) {
+        /* act as the app once: 640x480 frame, concentric rings + quadrant colours, so the path is testable in CI */
+        uint32_t w = 640, h = 480, x, y;
+        uint8_t* Y = ivm_feed + IVM_FEED_HDR, *UV = Y + w * h;
+        stl_le_p(ivm_feed + 16, 1);
+        for (y = 0; y < h; y++) {
+            for (x = 0; x < w; x++) {
+                int dx = (int)x - 320, dy = (int)y - 240;
+                Y[y * w + x] = (uint8_t)(((dx * dx + dy * dy) / 400) & 1 ? 230 : 40);
+            }
+        }
+        for (y = 0; y < h / 2; y++) {
+            for (x = 0; x < w / 2; x++) {
+                UV[y * w + 2 * x]     = x < w / 4 ? 60 : 200;
+                UV[y * w + 2 * x + 1] = y < h / 4 ? 200 : 60;
+            }
+        }
+        stl_le_p(ivm_feed + 20, w);
+        stl_le_p(ivm_feed + 24, h);
+        stl_le_p(ivm_feed + 28, 0);
+        smp_wmb();
+        stl_le_p(ivm_feed + 16, 2);
+        fprintf(stderr, "[ivm-isp] feed: test frame written\n");
+    }
+}
+
+/* publish stream state; called on stream on/off and every frame */
+static void ivm_feed_publish(bool on)
+{
+    if (ivm_feed_state == 0) {
+        ivm_feed_open();
+    }
+    if (ivm_feed_state != 1) {
+        return;
+    }
+    qatomic_set((uint32_t*)(ivm_feed + 8), on ? ivm_isp_cur_chan + 1 : 0);
+    qatomic_set((uint32_t*)(ivm_feed + 12), qatomic_read((uint32_t*)(ivm_feed + 12)) + 1);
+}
+
+/* take a consistent snapshot of the newest app frame (once per frame tick); false = no usable frame */
+static bool ivm_feed_snapshot(void)
+{
+    uint32_t s1, s2, w, h;
+    int      tries;
+    if (ivm_feed_state != 1) {
+        return false;
+    }
+    for (tries = 0; tries < 3; tries++) {
+        s1 = qatomic_load_acquire((uint32_t*)(ivm_feed + 16));
+        if (s1 == 0 || (s1 & 1)) {
+            continue;
+        }
+        if (s1 == ivm_feed_cseq && ivm_feed_copy) {
+            return true;
+        }
+        w = ldl_le_p(ivm_feed + 20);
+        h = ldl_le_p(ivm_feed + 24);
+        if (w < 16 || h < 16 || w > IVM_FEED_MAXW || h > IVM_FEED_MAXH || (w & 1) || (h & 1)) {
+            return false;
+        }
+        if (!ivm_feed_copy) {
+            ivm_feed_copy = g_malloc(IVM_FEED_MAXW * IVM_FEED_MAXH * 3u / 2u);
+        }
+        memcpy(ivm_feed_copy, ivm_feed + IVM_FEED_HDR, (size_t)w * h * 3 / 2);
+        smp_rmb();
+        s2 = qatomic_read((uint32_t*)(ivm_feed + 16));
+        if (s1 == s2) {
+            ivm_feed_cw = w; ivm_feed_ch = h; ivm_feed_cseq = s1;
+            ivm_feed_cflags = ldl_le_p(ivm_feed + 28);
+            return true;
+        }
+    }
+    return ivm_feed_copy && ivm_feed_cseq;
+}
+
+/* nearest-neighbour scale of the snapshot into a 420 bi-planar ISP buffer, centre-cropped to the target aspect */
+static void ivm_feed_fill(uint32_t y0, uint32_t y1, uint32_t w, uint32_t h, uint32_t s0, uint32_t s1)
+{
+    static uint8_t*  row;
+    static uint32_t* xm;
+    uint32_t sw = ivm_feed_cw, sh = ivm_feed_ch, cx = 0, cy = 0, cw = sw, chh = sh, x, y;
+    bool     mir = ivm_feed_cflags & 1;
+    if (!row) {
+        row = g_malloc(8192);
+        xm  = g_malloc(8192 * sizeof(uint32_t));
+    }
+    /* crop source to w:h */
+    if ((uint64_t)sw * h > (uint64_t)sh * w) {
+        cw = (uint32_t)((uint64_t)sh * w / h) & ~1u; cx = ((sw - cw) / 2) & ~1u;
+    } else {
+        chh = (uint32_t)((uint64_t)sw * h / w) & ~1u; cy = ((sh - chh) / 2) & ~1u;
+    }
+    for (x = 0; x < w; x++) {
+        uint32_t sx = cx + (uint32_t)((uint64_t)x * cw / w);
+        xm[x] = mir ? (sw - 1 - sx) : sx;
+    }
+    for (y = 0; y < h; y++) {
+        const uint8_t* src = ivm_feed_copy + (size_t)(cy + (uint32_t)((uint64_t)y * chh / h)) * sw;
+        for (x = 0; x < w; x++) {
+            row[x] = src[xm[x]];
+        }
+        address_space_write(&ivm_isp_dma_as, y0 + y * s0, MEMTXATTRS_UNSPECIFIED, row, w);
+    }
+    if (!y1) {
+        return;
+    }
+    const uint8_t* uvb = ivm_feed_copy + (size_t)sw * sh;
+    for (y = 0; y < h / 2; y++) {
+        const uint8_t* src = uvb + (size_t)((cy + (uint32_t)((uint64_t)(y * 2) * chh / h)) / 2) * sw;
+        for (x = 0; x + 1 < w; x += 2) {
+            uint32_t sx = xm[x] & ~1u;
+            row[x]     = src[sx];
+            row[x + 1] = src[sx + 1];
+        }
+        address_space_write(&ivm_isp_dma_as, y1 + y * s1, MEMTXATTRS_UNSPECIFIED, row, w & ~1u);
+    }
+}
+
 /* synthetic picture into a 420 bi-planar buffer: luma ramp + moving bars, chroma colour bands */
 static int ivm_isp_fill_err;
 static int ivm_isp_solid[3] = { -2, 0, 0 };   /* IVM_ISP_SOLID=y,u,v: solid test colour (isp42) */
@@ -168,6 +333,10 @@ static void ivm_isp_fill_yuv(const IvmIspBuf* b, uint32_t out)
     uint32_t        w = ivm_isp_out_w[out], h = ivm_isp_out_h[out], s0 = ivm_isp_out_s0[out], s1 = ivm_isp_out_s1[out];
     uint32_t        y0 = ldl_le_p(b->e), y1 = ldl_le_p(b->e + 4), x, y;
     if (!w || !h || w > 8192 || h > 8192 || s0 < w || !y0) {
+        return;
+    }
+    if (ivm_feed_state == 1 && ivm_feed_copy && ivm_feed_cseq) {
+        ivm_feed_fill(y0, (y1 && s1 >= w) ? y1 : 0, w, h, s0, s1);
         return;
     }
     if (!row) {
@@ -229,6 +398,8 @@ static void ivm_isp_frame_tick(void* opaque)
         return;
     }
     timer_mod(ivm_isp_ftimer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 66);
+    ivm_feed_publish(true);
+    ivm_feed_snapshot();
     if (ivm_isp_sm_state != 2) {
         ivm_isp_sm_poll();
         return;
@@ -293,6 +464,7 @@ static void ivm_isp_stream(bool on)
         ivm_isp_ftimer = timer_new_ms(QEMU_CLOCK_VIRTUAL, ivm_isp_frame_tick, NULL);
     }
     ivm_isp_streaming = on;
+    ivm_feed_publish(on);
     fprintf(stderr, "[ivm-isp] fw: stream %s\n", on ? "ON" : "OFF");
     if (on) {
         ivm_isp_sm_request();
