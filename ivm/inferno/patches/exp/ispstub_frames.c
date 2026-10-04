@@ -192,6 +192,27 @@ static void ivm_isp_fill_yuv(const IvmIspBuf* b, uint32_t out)
     }
 }
 
+/* Metadata buffer layout (H10ISP H10ISPFrameMetadata ctor + ProcessFrameMetadata, isp40):
+ *   +0x0c u32 frame number - the receiver expects last+1 (else msg 3/5 -> kFigCaptureStreamNotification_
+ *         Discontinuity, DiscontinuityReason; every frame was dropped by BWMultiStreamCameraSourceNode)
+ *   +0x10 u32 number of sections, +0x14.. u32 section offsets (from buffer start); section 0 = sCIspMetaData
+ *   sCIspMetaData +0x30 u32 frame rate 8.8 (used for the gap duration) */
+static uint32_t ivm_isp_meta_fn[IVM_ISP_NPOOL];
+static void ivm_isp_fill_meta(const IvmIspBuf* b, uint32_t pool)
+{
+    uint8_t  hdr[0x40 + 0x200];
+    uint32_t a = ldl_le_p(b->e);
+    if (!a || getenv("IVM_ISP_NOMETA")) {
+        return;
+    }
+    memset(hdr, 0, sizeof(hdr));
+    stl_le_p(hdr + 0x0c, ++ivm_isp_meta_fn[pool]);
+    stl_le_p(hdr + 0x10, 1);
+    stl_le_p(hdr + 0x14, 0x40);
+    stl_le_p(hdr + 0x40 + 0x30, 15 << 8);
+    address_space_write(&ivm_isp_dma_as, a, MEMTXATTRS_UNSPECIFIED, hdr, sizeof(hdr));
+}
+
 static void ivm_isp_frame_tick(void* opaque)
 {
     uint32_t pool, k, n = 0;
@@ -229,6 +250,8 @@ static void ivm_isp_frame_tick(void* opaque)
                 ivm_isp_fill_yuv(&b, 0);
             } else if (id == 6) {
                 ivm_isp_fill_yuv(&b, 1);
+            } else if (id == 0 || id == 2 || id == 8) {
+                ivm_isp_fill_meta(&b, pool);
             }
         }
         memcpy(msg + 8 + n * 0x30, b.e, 0x30);
