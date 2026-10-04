@@ -94,6 +94,35 @@ void HELPER(ivm_oslog)(CPUARMState* env, uint64_t pc)
     ivm_u_cstr(env, env->xregs[3], fmt, sizeof(fmt));
     ivm_u_read(env, env->xregs[4], buf, size);
     nargs = size >= 2 ? buf[1] : 0;
+    if (!fmt[0]) {   /* format page not faulted in this task: emit unslid ptr + raw items, resolved offline */
+        o = snprintf(out, sizeof(out), "@F%" PRIx64 " |", env->xregs[3] - ivm_dsc_slide);
+        for (ai = 0; ai < nargs && bi + 2 <= size && o < sizeof(out) - 200; ai++) {
+            uint8_t  desc = buf[bi], isz = buf[bi + 1];
+            uint64_t v = 0;
+            if (bi + 2 + isz > size) {
+                break;
+            }
+            memcpy(&v, buf + bi + 2, isz > 8 ? 8 : isz);
+            bi += 2 + isz;
+            if ((desc >> 4) == 2) {
+                ivm_u_cstr(env, v, s, sizeof(s));
+                if (s[0]) {
+                    for (i = 0; s[i]; i++) {
+                        if (s[i] == ' ' || s[i] == '|') {
+                            s[i] = '_';
+                        }
+                    }
+                    o += snprintf(out + o, sizeof(out) - o, " s:%s", s);
+                } else {
+                    o += snprintf(out + o, sizeof(out) - o, " S:%" PRIx64, v - ivm_dsc_slide);
+                }
+            } else {
+                o += snprintf(out + o, sizeof(out) - o, " %x:%u:%" PRIx64, desc >> 4, isz, v);
+            }
+        }
+        fprintf(stderr, "[oslog] dso=%" PRIx64 " t=%u %s\n", dso, (unsigned)(env->xregs[2] & 0xff), out);
+        return;
+    }
 
     for (f = fmt; *f && o < sizeof(out) - 300; f++) {
         const char* spec;
