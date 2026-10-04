@@ -151,6 +151,10 @@ static void ivm_isp_create(AppleT8030MachineState* t8030)
         memory_region_add_subregion_overlap(get_system_memory(), r->base, &r->mr, -1);
         fprintf(stderr, "[ivm-isp] region %u at 0x%" PRIx64 " size 0x%" PRIx64 "\n", i, r->base, reg[i * 2 + 1]);
     }
+    if ((prop = apple_dt_get_prop(isp, "interrupts")) && prop->len >= 4) {
+        ivm_isp_irq = qdev_get_gpio_in(DEVICE(t8030->aic), ldl_le_p(prop->data));
+        fprintf(stderr, "[ivm-isp] irq %u\n", ldl_le_p(prop->data));
+    }
 }
 
 static void t8030_create_sart(AppleT8030MachineState* t8030)
