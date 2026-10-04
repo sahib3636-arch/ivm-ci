@@ -36,6 +36,8 @@ static const IvmIspChan ivm_isp_chans[] = {
 static qemu_irq ivm_isp_irq;      /* AIC line of isp interrupts[0] (kext registers index 0) */
 static uint32_t ivm_isp_pend;     /* pending sources: bit (1 << channel src) */
 static long     ivm_isp_ncmd;
+static AddressSpace ivm_isp_dma_as;   /* ISP view through dart-isp (mapper-isp SID) */
+static bool     ivm_isp_dma_ok;
 
 static void ivm_isp_set(uint32_t off, uint32_t val)
 {
@@ -73,8 +75,17 @@ static void ivm_isp_doorbell(uint32_t gb, uint32_t bits)
             }
             address_space_read(&address_space_memory, ivm_isp_fw_phys + ring + k * 0x40u, MEMTXATTRS_UNSPECIFIED, w, 12);
             if (ivm_isp_ncmd++ < 2000) {
-                fprintf(stderr, "[ivm-isp] fw: cmd #%ld %s[%u] addr=0x%x len=0x%x w2=0x%x -> ack\n", ivm_isp_ncmd,
-                        ivm_isp_chans[i].name, k, le32_to_cpu(w[0]), le32_to_cpu(w[1]), le32_to_cpu(w[2]));
+                uint8_t c[24] = { 0 };
+                char hex[64];
+                uint32_t n;
+                if (ivm_isp_dma_ok) {
+                    address_space_read(&ivm_isp_dma_as, le32_to_cpu(w[0]) & ~3u, MEMTXATTRS_UNSPECIFIED, c, sizeof(c));
+                }
+                for (n = 0; n < sizeof(c); n++) {
+                    snprintf(hex + 2 * n, 3, "%02x", c[n]);
+                }
+                fprintf(stderr, "[ivm-isp] fw: cmd #%ld %s[%u] addr=0x%x len=0x%x op=0x%04x [%s] -> ack\n", ivm_isp_ncmd,
+                        ivm_isp_chans[i].name, k, le32_to_cpu(w[0]), le32_to_cpu(w[1]), lduw_le_p(c + 4), hex);
             }
             w0 |= 1;
             ivm_isp_ring_rw(ring, k, &w0, true);
