@@ -257,7 +257,7 @@ static bool ivm_isp_cmd_respond(uint8_t* b, uint32_t len, uint16_t op)
         }
         for (t = 0; t < max && 0x10 + (t + 1) * 0x10 <= len; t++) {
             ivm_isp_put16(b, len, 0x10 + t * 0x10, t);
-            ivm_isp_put16(b, len, 0x12 + t * 0x10, t);
+            ivm_isp_put16(b, len, 0x12 + t * 0x10, t + 3);   /* ids 0/2 are taken by the metadata pools */
             ivm_isp_put32(b, len, 0x18 + t * 0x10, 8);
         }
         ivm_isp_put32(b, len, 0xc, t);
