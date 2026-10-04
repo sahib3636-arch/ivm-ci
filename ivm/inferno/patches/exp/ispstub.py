@@ -34,6 +34,7 @@ sub(T, "static void t8030_rtkit_seg_prop_setup(AppleDTNode* iop_nub, hwaddr base
        "static hwaddr ivm_isp_fw_phys;   /* ivm ispstub: fake preloaded fw carve-out */\n"
        "static void t8030_rtkit_seg_prop_setup(AppleDTNode* iop_nub, hwaddr base, uint32_t size)\n")
 _FW = (pathlib.Path(__file__).resolve().parent / "ispstub_fw.c").read_text()
+_FW = _FW.replace("@@IVM_FRAMES@@", (pathlib.Path(__file__).resolve().parent / "ispstub_frames.c").read_text())
 sub(T, "static void t8030_create_sart(AppleT8030MachineState* t8030)\n", r'''/* ---- ivm ispstub (exp/ispstub.py) ---- */
 typedef struct {
     MemoryRegion mr;
