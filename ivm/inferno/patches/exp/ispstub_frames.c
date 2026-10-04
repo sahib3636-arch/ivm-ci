@@ -150,8 +150,16 @@ static void ivm_isp_sm_poll(void)
 
 /* synthetic picture into a 420 bi-planar buffer: luma ramp + moving bars, chroma colour bands */
 static int ivm_isp_fill_err;
+static int ivm_isp_solid[3] = { -2, 0, 0 };   /* IVM_ISP_SOLID=y,u,v: solid test colour (isp42) */
 static void ivm_isp_fill_yuv(const IvmIspBuf* b, uint32_t out)
 {
+    if (ivm_isp_solid[0] == -2) {
+        const char* e = getenv("IVM_ISP_SOLID");
+        ivm_isp_solid[0] = -1;
+        if (e) {
+            sscanf(e, "%d,%d,%d", &ivm_isp_solid[0], &ivm_isp_solid[1], &ivm_isp_solid[2]);
+        }
+    }
     if (ivm_isp_frames < 3) {
         fprintf(stderr, "[ivm-isp] fw: fill out=%u y=%08x uv=%08x %ux%u s=%u/%u\n", out, ldl_le_p(b->e), ldl_le_p(b->e + 4),
                 ivm_isp_out_w[out], ivm_isp_out_h[out], ivm_isp_out_s0[out], ivm_isp_out_s1[out]);
@@ -168,7 +176,7 @@ static void ivm_isp_fill_yuv(const IvmIspBuf* b, uint32_t out)
     for (y = 0; y < h; y++) {
         for (x = 0; x < w; x++) {
             uint32_t bar = ((x + ivm_isp_frames * 8) / 96) & 1;
-            row[x]       = (uint8_t)(40 + (y * 150) / h + (bar ? 30 : 0));
+            row[x]       = ivm_isp_solid[0] >= 0 ? (uint8_t)ivm_isp_solid[0] : (uint8_t)(40 + (y * 150) / h + (bar ? 30 : 0));
         }
         if (address_space_write(&ivm_isp_dma_as, y0 + y * s0, MEMTXATTRS_UNSPECIFIED, row, w) != MEMTX_OK &&
             ivm_isp_fill_err++ < 8) {
@@ -181,8 +189,8 @@ static void ivm_isp_fill_yuv(const IvmIspBuf* b, uint32_t out)
                 uint32_t band = (x * 6) / w;           /* 6 colour bands */
                 static const uint8_t uv[6][2] = { { 90, 240 }, { 54, 34 }, { 240, 110 }, { 128, 128 },
                                                   { 200, 200 }, { 60, 160 } };
-                row[x]     = uv[band][0];
-                row[x + 1] = uv[band][1];
+                row[x]     = ivm_isp_solid[0] >= 0 ? (uint8_t)ivm_isp_solid[1] : uv[band][0];
+                row[x + 1] = ivm_isp_solid[0] >= 0 ? (uint8_t)ivm_isp_solid[2] : uv[band][1];
             }
             MemTxResult r = address_space_write(&ivm_isp_dma_as, y1 + y * s1, MEMTXATTRS_UNSPECIFIED, row, w & ~1u);
             if (r != MEMTX_OK && ivm_isp_fill_err++ < 8) {
