@@ -20,11 +20,23 @@ p = root / "target/arm/tcg/helper-a64.c"
 p.write_text(p.read_text() + r'''
 /* ---- iVM ktrace (exp/ktrace.py) ---- */
 static long ivm_ktrace_hits, ivm_ktrace_max = -1;
+static uint64_t ivm_kt_saved[64];
 void HELPER(ivm_ktrace)(CPUARMState* env, uint64_t pc)
 {
     if (ivm_ktrace_max < 0) {
         const char* e = getenv("IVM_KTRACE_N");
         ivm_ktrace_max = e ? atol(e) : 4000;
+    }
+    {   /* IVM_KTRACE_SAVE=<pc>: silently remember x0 (arm_saved_state*) per vCPU at that pc (e.g. sleh_synchronous) */
+        static uint64_t save_pc = 1;
+        if (save_pc == 1) {
+            const char* e = getenv("IVM_KTRACE_SAVE");
+            save_pc = e ? strtoull(e, NULL, 16) : 0;
+        }
+        if (save_pc && pc == save_pc) {
+            ivm_kt_saved[env_cpu(env)->cpu_index & 63] = env->xregs[0];
+            return;
+        }
     }
     if (ivm_ktrace_hits++ >= ivm_ktrace_max) { return; }
     fprintf(stderr, "[ktrace] %" PRIx64 " x0=%" PRIx64 " x1=%" PRIx64 " x2=%" PRIx64 " x3=%" PRIx64 " x4=%" PRIx64
@@ -32,15 +44,16 @@ void HELPER(ivm_ktrace)(CPUARMState* env, uint64_t pc)
             env->xregs[2], env->xregs[3], env->xregs[4], env->xregs[5], env->xregs[6], env->xregs[7], env->xregs[30]);
     if (getenv("IVM_KTRACE_SS")) {   /* x0 = arm_saved_state*: print saved user lr/sp/pc (+0xf8/+0x100/+0x108) */
         uint64_t ss[3] = { 0, 0, 0 };
-        cpu_memory_rw_debug(env_cpu(env), env->xregs[0] + 0xf8, ss, sizeof(ss), false);
+        uint64_t ssp = getenv("IVM_KTRACE_SAVE") ? ivm_kt_saved[env_cpu(env)->cpu_index & 63] : env->xregs[0];
+        cpu_memory_rw_debug(env_cpu(env), ssp + 0xf8, ss, sizeof(ss), false);
         fprintf(stderr, "[ktrace]   ss lr=%" PRIx64 " sp=%" PRIx64 " pc=%" PRIx64 "\n", ss[0], ss[1], ss[2]);
         {   /* walk the saved user frame-pointer chain */
             uint64_t fp = 0, fr[2];
             int      d;
-            cpu_memory_rw_debug(env_cpu(env), env->xregs[0] + 0xf0, &fp, 8, false);
+            cpu_memory_rw_debug(env_cpu(env), ssp + 0xf0, &fp, 8, false);
             for (d = 0; d < 24 && fp && !(fp & 7); d++) {
                 if (cpu_memory_rw_debug(env_cpu(env), fp, fr, sizeof(fr), false)) { break; }
-                fprintf(stderr, "[ktrace]   bt#%d %" PRIx64 "\n", d, fr[1] & 0xfffffffffULL);
+                fprintf(stderr, "[ktrace]   bt#%d %" PRIx64 "\n", d, (uint64_t)(fr[1] & 0xfffffffffULL));
                 fp = fr[0];
             }
         }
