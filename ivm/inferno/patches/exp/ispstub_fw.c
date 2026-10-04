@@ -73,6 +73,17 @@ static void ivm_isp_putstr(uint8_t* b, uint32_t len, uint32_t off, const char* s
 /* channel -> sensor (platform table, iPhone 11 / sensor-type 0xaf: 0 rear, 2 frnt, 3 firc (Face ID IR), 4 resw) */
 static uint16_t ivm_isp_sensor_id(uint32_t ch)
 {
+    /* IVM_ISP_CHMASK: channels to report (default 0x5 = rear wide + front). The super-wide (ch4, 0x10)
+     * makes CMCapture build the "Back Dual Wide" device whose BWPreviewStitcherNode needs real module
+     * calibration (init fails -> session commit -12780), so it is off by default. */
+    static int mask = -1;
+    if (mask < 0) {
+        const char* e = getenv("IVM_ISP_CHMASK");
+        mask = e ? (int)strtol(e, NULL, 0) : 0x5;
+    }
+    if (ch >= 31 || !(mask & (1 << ch))) {
+        return 0;
+    }
     switch (ch) {
     case 0: return 0x0503;   /* back wide */
     case 2: return 0x0514;   /* front (CameraSetup.plist DefaultSensorIDs) */
