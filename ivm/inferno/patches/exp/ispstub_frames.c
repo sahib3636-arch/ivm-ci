@@ -149,8 +149,13 @@ static void ivm_isp_sm_poll(void)
 }
 
 /* synthetic picture into a 420 bi-planar buffer: luma ramp + moving bars, chroma colour bands */
+static int ivm_isp_fill_err;
 static void ivm_isp_fill_yuv(const IvmIspBuf* b, uint32_t out)
 {
+    if (ivm_isp_frames < 3) {
+        fprintf(stderr, "[ivm-isp] fw: fill out=%u y=%08x uv=%08x %ux%u s=%u/%u\n", out, ldl_le_p(b->e), ldl_le_p(b->e + 4),
+                ivm_isp_out_w[out], ivm_isp_out_h[out], ivm_isp_out_s0[out], ivm_isp_out_s1[out]);
+    }
     static uint8_t* row;
     uint32_t        w = ivm_isp_out_w[out], h = ivm_isp_out_h[out], s0 = ivm_isp_out_s0[out], s1 = ivm_isp_out_s1[out];
     uint32_t        y0 = ldl_le_p(b->e), y1 = ldl_le_p(b->e + 4), x, y;
@@ -165,7 +170,10 @@ static void ivm_isp_fill_yuv(const IvmIspBuf* b, uint32_t out)
             uint32_t bar = ((x + ivm_isp_frames * 8) / 96) & 1;
             row[x]       = (uint8_t)(40 + (y * 150) / h + (bar ? 30 : 0));
         }
-        address_space_write(&ivm_isp_dma_as, y0 + y * s0, MEMTXATTRS_UNSPECIFIED, row, w);
+        if (address_space_write(&ivm_isp_dma_as, y0 + y * s0, MEMTXATTRS_UNSPECIFIED, row, w) != MEMTX_OK &&
+            ivm_isp_fill_err++ < 8) {
+            fprintf(stderr, "[ivm-isp] fw: luma write fail out=%u y=%u addr=%08x\n", out, y, y0 + y * s0);
+        }
     }
     if (y1 && s1 >= w) {
         for (y = 0; y < h / 2; y++) {
@@ -176,7 +184,10 @@ static void ivm_isp_fill_yuv(const IvmIspBuf* b, uint32_t out)
                 row[x]     = uv[band][0];
                 row[x + 1] = uv[band][1];
             }
-            address_space_write(&ivm_isp_dma_as, y1 + y * s1, MEMTXATTRS_UNSPECIFIED, row, w & ~1u);
+            MemTxResult r = address_space_write(&ivm_isp_dma_as, y1 + y * s1, MEMTXATTRS_UNSPECIFIED, row, w & ~1u);
+            if (r != MEMTX_OK && ivm_isp_fill_err++ < 8) {
+                fprintf(stderr, "[ivm-isp] fw: chroma write fail out=%u y=%u addr=%08x r=%d\n", out, y, y1 + y * s1, r);
+            }
         }
     }
 }
