@@ -260,3 +260,32 @@ sub(S, "    if (surface->layout == SCALER_LAYOUT_NONE || surface->width == 0 || 
        "        }\n"
        "    }\n"
        "    if (surface->layout == SCALER_LAYOUT_NONE || surface->width == 0 || surface->height == 0) { return false; }\n")
+
+# s39 isp47: display pipe layer blending. With the camera viewfinder, IOMFB uses two generic pipes (video BGRA from the
+# M2 scaler + UI layer with a transparent hole). Inferno drew every enabled pipe with PIXMAN_OP_SRC, so the later
+# layer's transparent pixels wiped the earlier one (black viewfinder). Draw the first enabled pipe with SRC and the
+# rest with OVER (CA surfaces are premultiplied). IVM_ADP_REV reverses pipe order, IVM_ADP_SRC restores old behaviour,
+# IVM_ADP_LOG=N logs N two-layer frames.
+A = "hw/display/apple_displaypipe_v4.c"
+sub(A, "static void adp_v4_gp_draw(ADPV4GenPipe* genpipe, AddressSpace* dma_as, pixman_image_t* disp_image,\n                           QemuConsole* console)\n{\n",
+       "static int ivm_adp_drawn;   /* ivm: pipes already composited in the current frame */\n"
+       "static void adp_v4_gp_draw(ADPV4GenPipe* genpipe, AddressSpace* dma_as, pixman_image_t* disp_image,\n                           QemuConsole* console)\n{\n")
+sub(A, "        pixman_image_composite(PIXMAN_OP_SRC, image, NULL, disp_image, 0, 0, 0, 0, 0, 0, genpipe->state.dest_width,\n",
+       "        pixman_image_composite((ivm_adp_drawn++ && !getenv(\"IVM_ADP_SRC\")) ? PIXMAN_OP_OVER : PIXMAN_OP_SRC, image, NULL, disp_image, 0, 0, 0, 0, 0, 0, genpipe->state.dest_width,\n")
+sub(A, "    for (i = 0; i < ADP_V4_GP_COUNT; ++i) { adp_v4_gp_draw(&adp->genpipe[i], &adp->dma_as, disp_image, adp->console); }\n",
+       "    ivm_adp_drawn = 0;\n"
+       "    {\n        static int ivm_adp_rev = -1, ivm_adp_log = -1;\n"
+       "        if (ivm_adp_rev < 0) { ivm_adp_rev = getenv(\"IVM_ADP_REV\") != NULL; const char* e = getenv(\"IVM_ADP_LOG\"); ivm_adp_log = e ? atoi(e) : 0; }\n"
+       "        if (ivm_adp_log > 0 && REG_FIELD_EX32(adp->genpipe[1].state.config_control, GP_CONFIG_CONTROL, ENABLED)) {\n"
+       "            ivm_adp_log--;\n"
+       "            for (i = 0; i < ADP_V4_GP_COUNT; ++i) {\n"
+       "                ADPV4GenPipeState* s = &adp->genpipe[i].state;\n"
+       "                fprintf(stderr, \"[ivm-adp] gp%d ctl=0x%x fmt=0x%x src %ux%u dst %ux%u stride %u start 0x%x\\n\", i, s->config_control, s->pixel_format,\n"
+       "                        s->src_width, s->src_height, s->dest_width, s->dest_height, s->stride, s->data_start);\n"
+       "            }\n"
+       "            fprintf(stderr, \"[ivm-adp] blend l0=0x%x l1=0x%x\\n\", adp->blend_unit.layer_config[0], adp->blend_unit.layer_config[1]);\n"
+       "        }\n"
+       "        for (i = 0; i < ADP_V4_GP_COUNT; ++i) {\n"
+       "            int j = ivm_adp_rev ? ADP_V4_GP_COUNT - 1 - i : i;\n"
+       "            adp_v4_gp_draw(&adp->genpipe[j], &adp->dma_as, disp_image, adp->console);\n"
+       "        }\n    }\n")
