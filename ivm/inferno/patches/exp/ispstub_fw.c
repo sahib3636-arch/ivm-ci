@@ -205,6 +205,23 @@ static void ivm_isp_doorbell(uint32_t gb, uint32_t bits)
                 if (len >= 8 && len <= 0x1000) {
                     uint8_t* pk = g_malloc0(len);
                     address_space_read(&ivm_isp_dma_as, a, MEMTXATTRS_UNSPECIFIED, pk, len);
+                    {   /* first packet of each opcode: full hex dump (<= 0x200 B) */
+                        static GHashTable* seen;
+                        uint16_t op = lduw_le_p(pk + 4);
+                        if (!seen) {
+                            seen = g_hash_table_new(g_direct_hash, g_direct_equal);
+                        }
+                        if (!g_hash_table_contains(seen, GUINT_TO_POINTER((guint)op + 1))) {
+                            uint32_t n, m = len < 0x200 ? len : 0x200;
+                            GString* gs = g_string_new(NULL);
+                            g_hash_table_add(seen, GUINT_TO_POINTER((guint)op + 1));
+                            for (n = 0; n < m; n++) {
+                                g_string_append_printf(gs, "%02x", pk[n]);
+                            }
+                            fprintf(stderr, "[ivm-isp] fw: dump op=0x%04x len=0x%x %s\n", op, len, gs->str);
+                            g_string_free(gs, TRUE);
+                        }
+                    }
                     if (ivm_isp_cmd_respond(pk, len, lduw_le_p(pk + 4))) {
                         address_space_write(&ivm_isp_dma_as, a, MEMTXATTRS_UNSPECIFIED, pk, len);
                     }
