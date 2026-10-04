@@ -266,12 +266,14 @@ static void ivm_isp_ring_rw(uint32_t ring, uint32_t slot, uint32_t* w0, bool wr)
     }
 }
 
+@@IVM_FRAMES@@
 /* IOProcessorChannel slots are 64 B: w0 = ISP address | turn bit0, w1, w2.  Command (type 0) rings: host
  * writes bit0 = 0, fw completes by setting bit0 = 1 (cmd+6 ack stays 0 = success).  Other rings start owned by
  * fw (bit0 = 1).  Completion raises pending bit (1 << src) at +0x1ae0100, host W1C-clears via +0x1ae4a0c. */
 static void ivm_isp_doorbell(uint32_t gb, uint32_t bits)
 {
     uint32_t i, k, w0, w[3], done = 0;
+    ivm_isp_sm_poll();
     for (i = 0; i < ARRAY_SIZE(ivm_isp_chans); i++) {
         uint32_t ring = IVM_ISP_RING0 + i * IVM_ISP_RING_STRIDE;
         if (ivm_isp_chans[i].type != 0 || !((bits >> ivm_isp_chans[i].src) & 1)) {
@@ -296,7 +298,9 @@ static void ivm_isp_doorbell(uint32_t gb, uint32_t bits)
                 fprintf(stderr, "[ivm-isp] fw: cmd #%ld %s[%u] addr=0x%x len=0x%x op=0x%04x [%s] -> ack\n", ivm_isp_ncmd,
                         ivm_isp_chans[i].name, k, le32_to_cpu(w[0]), le32_to_cpu(w[1]), lduw_le_p(c + 4), hex);
             }
-            if (ivm_isp_dma_ok) {
+            if (ivm_isp_dma_ok && i == IVM_ISP_CH_H2T) {
+                ivm_isp_h2t(le32_to_cpu(w[0]) & ~3u);
+            } else if (ivm_isp_dma_ok) {
                 uint32_t len = le32_to_cpu(w[1]);
                 uint32_t a = le32_to_cpu(w[0]) & ~3u;
                 if (len >= 8 && len <= 0x1000) {
@@ -321,6 +325,19 @@ static void ivm_isp_doorbell(uint32_t gb, uint32_t bits)
                     }
                     if (ivm_isp_cmd_respond(pk, len, lduw_le_p(pk + 4))) {
                         address_space_write(&ivm_isp_dma_as, a, MEMTXATTRS_UNSPECIFIED, pk, len);
+                    }
+                    switch (lduw_le_p(pk + 4)) {
+                    case 0x0100: /* CH_START */
+                        ivm_isp_stream(true);
+                        break;
+                    case 0x0101: /* CH_STOP */
+                    case 0x0001: /* STOP */
+                    case 0x0021: /* SUSPEND */
+                        if (ivm_isp_streaming) {
+                            ivm_isp_stream(false);
+                        }
+                        memset(ivm_isp_bufn, 0, sizeof(ivm_isp_bufn));
+                        break;
                     }
                     g_free(pk);
                 }
