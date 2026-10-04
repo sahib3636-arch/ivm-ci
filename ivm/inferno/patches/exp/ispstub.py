@@ -151,6 +151,13 @@ static void ivm_isp_create(AppleT8030MachineState* t8030)
         memory_region_add_subregion_overlap(get_system_memory(), r->base, &r->mr, -1);
         fprintf(stderr, "[ivm-isp] region %u at 0x%" PRIx64 " size 0x%" PRIx64 "\n", i, r->base, reg[i * 2 + 1]);
     }
+    {   /* AppleH10CamIn::start maps a hard-coded per-version register page (v10: 0x23b110000, ISP_Suspend clears
+         * bit 0x20 there); unbacked in the machine model -> data abort.  Back it with an extra recording region. */
+        IvmIspRegion* r = g_new0(IvmIspRegion, 1);
+        r->idx = 4; r->base = 0x23b110000ULL;
+        memory_region_init_io(&r->mr, OBJECT(t8030), &ivm_isp_ops, r, "ivm-isp-x", 0x4000);
+        memory_region_add_subregion_overlap(get_system_memory(), r->base, &r->mr, -1);
+    }
     if ((prop = apple_dt_get_prop(isp, "interrupts")) && prop->len >= 4) {
         ivm_isp_irq = qdev_get_gpio_in(DEVICE(t8030->aic), ldl_le_p(prop->data));
         fprintf(stderr, "[ivm-isp] irq %u\n", ldl_le_p(prop->data));
