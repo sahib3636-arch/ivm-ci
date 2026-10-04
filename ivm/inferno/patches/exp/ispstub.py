@@ -38,6 +38,9 @@ typedef struct {
 } IvmIspRegion;
 static GHashTable* ivm_isp_regs;   /* key (idx<<28|off) -> last written value */
 static GHashTable* ivm_isp_rd;     /* key -> forced read value */
+typedef struct { guint key; uint32_t wmask, rset, rclr; } IvmIspRule;
+static IvmIspRule  ivm_isp_rules[64];
+static int         ivm_isp_nrules;
 static long        ivm_isp_nlog, ivm_isp_maxlog = 4000;
 
 /* log with the guest LR (x30 is synced to env at slow-path memory ops); identical consecutive accesses are
@@ -76,7 +79,14 @@ static uint64_t ivm_isp_read(void* opaque, hwaddr off, unsigned size)
 static void ivm_isp_write(void* opaque, hwaddr off, uint64_t val, unsigned size)
 {
     IvmIspRegion* r = opaque;
-    g_hash_table_insert(ivm_isp_regs, GUINT_TO_POINTER(((guint)r->idx << 28) | (guint)off), GUINT_TO_POINTER((guint)val));
+    guint key = ((guint)r->idx << 28) | (guint)off;
+    int i;
+    for (i = 0; i < ivm_isp_nrules; i++) {   /* write-triggered status emulation: (val & wmask) == wmask -> |rset &~rclr */
+        if (ivm_isp_rules[i].key == key && (val & ivm_isp_rules[i].wmask) == ivm_isp_rules[i].wmask) {
+            val = (val | ivm_isp_rules[i].rset) & ~(uint64_t)ivm_isp_rules[i].rclr;
+        }
+    }
+    g_hash_table_insert(ivm_isp_regs, GUINT_TO_POINTER(key), GUINT_TO_POINTER((guint)val));
     ivm_isp_log('W', r, off, size, val);
 }
 
@@ -96,9 +106,10 @@ static void ivm_isp_create(AppleT8030MachineState* t8030)
     if (!isp || !(prop = apple_dt_get_prop(isp, "reg"))) { fprintf(stderr, "[ivm-isp] no isp node\n"); return; }
     if ((e = getenv("IVM_ISP_LOG"))) { ivm_isp_maxlog = atol(e); }
     ivm_isp_regs = g_hash_table_new(g_direct_hash, g_direct_equal);
+    ivm_isp_rd = g_hash_table_new(g_direct_hash, g_direct_equal);
+    g_hash_table_insert(ivm_isp_rd, GUINT_TO_POINTER(0x1800000u), GUINT_TO_POINTER(0xa0000u));   /* rISP_ISPVERSION: H10 (ver 10) */
     if ((e = getenv("IVM_ISP_RD"))) {
         gchar** kv = g_strsplit(e, ",", -1);
-        ivm_isp_rd = g_hash_table_new(g_direct_hash, g_direct_equal);
         for (i = 0; kv[i]; i++) {
             gchar** p2 = g_strsplit(kv[i], "=", 2);
             if (p2[0] && p2[1]) {
@@ -108,6 +119,24 @@ static void ivm_isp_create(AppleT8030MachineState* t8030)
             g_strfreev(p2);
         }
         g_strfreev(kv);
+    }
+    /* IVM_ISP_RULE="key,wmask,rset,rclr:..." (hex, key = region<<28|off); built-in defaults first */
+    {
+        static const IvmIspRule defaults[] = {
+            { 0x1f04000, 0x2, 0x4, 0x8 },   /* ForceISPDPEIdle: force_idle req (bit1) -> ack bits[3:2] = 1 */
+            { 0x1f00000, 0x2, 0x4, 0x8 },
+        };
+        for (i = 0; i < ARRAY_SIZE(defaults); i++) { ivm_isp_rules[ivm_isp_nrules++] = defaults[i]; }
+        if ((e = getenv("IVM_ISP_RULE"))) {
+            gchar** rl = g_strsplit(e, ":", -1);
+            for (i = 0; rl[i] && ivm_isp_nrules < 64; i++) {
+                unsigned long long a, b, c, d;
+                if (sscanf(rl[i], "%llx,%llx,%llx,%llx", &a, &b, &c, &d) == 4) {
+                    ivm_isp_rules[ivm_isp_nrules++] = (IvmIspRule){ (guint)a, (uint32_t)b, (uint32_t)c, (uint32_t)d };
+                }
+            }
+            g_strfreev(rl);
+        }
     }
     reg = (uint64_t*)prop->data;
     for (i = 0; i < prop->len / 16; i++) {
