@@ -75,7 +75,7 @@ static uint16_t ivm_isp_sensor_id(uint32_t ch)
 {
     switch (ch) {
     case 0: return 0x0503;   /* back wide */
-    case 2: return 0x0330;   /* front */
+    case 2: return 0x0514;   /* front (CameraSetup.plist DefaultSensorIDs) */
     case 4: return 0x0372;   /* back super wide */
     default: return 0;       /* 1, 5 absent; 3 (IR) not modelled */
     }
