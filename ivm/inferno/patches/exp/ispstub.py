@@ -204,3 +204,21 @@ sub(T, "    if (prop != NULL && ldl_le_p(prop->data) == 0) { stl_le_p(prop->data
        "    if (prop != NULL && ldl_le_p(prop->data) == 0 && !(getenv(\"IVM_ISP\") && strcmp(name, \"dart-isp\") == 0)) { stl_le_p(prop->data, 0x4000); }\n")
 p_ = root / T; s_ = p_.read_text(); assert s_.count("@@IVM_FW@@") == 1; p_.write_text(s_.replace("@@IVM_FW@@", _FW))
 print("ispstub: ok")
+
+# s39 isp43: env-gated M2 scaler trace (IVM_SCALER_LOG=N -> first N jobs to stderr as "[ivm-msr]")
+S = "hw/display/apple_scaler.c"
+sub(S, "    if (src_ok && dst_ok) { apple_scaler_process(scaler, &src, &dst); }\n",
+       "    {\n        static int ivm_msr_n = -1;\n"
+       "        if (ivm_msr_n < 0) { const char* e = getenv(\"IVM_SCALER_LOG\"); ivm_msr_n = e ? atoi(e) : 0; }\n"
+       "        if (ivm_msr_n > 0) {\n            ivm_msr_n--;\n"
+       "            uint8_t sb[4] = {0}, sc[4] = {0};\n"
+       "            if (src_ok) { dma_memory_read(&scaler->dma_as, src.base[LUMA] + src.stride[LUMA] * (src.height / 2) + src.width / 2, sb, 4, MEMTXATTRS_UNSPECIFIED);\n"
+       "                          dma_memory_read(&scaler->dma_as, src.base[CHROMA] + src.stride[CHROMA] * (src.height / 4) + src.width / 2, sc, 4, MEMTXATTRS_UNSPECIFIED); }\n"
+       "            fprintf(stderr, \"[ivm-msr] fc=%u src fmt=0x%x sw=0x%x %s %ux%u st %u/%u base 0x%llx/0x%llx ok=%d Y=%02x%02x%02x%02x C=%02x%02x%02x%02x | \"\n"
+       "                    \"dst fmt=0x%x sw=0x%x %s %ux%u st %u/%u base 0x%llx/0x%llx ok=%d rot=0x%x\\n\",\n"
+       "                    qatomic_read(&scaler->frame_count), scaler->srcdst[SOURCE].format, scaler->srcdst[SOURCE].swizzle, apple_scaler_stringify_format(src.format), src.width, src.height, src.stride[LUMA], src.stride[CHROMA],\n"
+       "                    (unsigned long long)src.base[LUMA], (unsigned long long)src.base[CHROMA], src_ok, sb[0], sb[1], sb[2], sb[3], sc[0], sc[1], sc[2], sc[3],\n"
+       "                    scaler->srcdst[DEST].format, scaler->srcdst[DEST].swizzle, apple_scaler_stringify_format(dst.format), dst.width, dst.height, dst.stride[LUMA], dst.stride[CHROMA],\n"
+       "                    (unsigned long long)dst.base[LUMA], (unsigned long long)dst.base[CHROMA], dst_ok, scaler->flip_rotate_cfg);\n"
+       "        }\n    }\n"
+       "    if (src_ok && dst_ok) { apple_scaler_process(scaler, &src, &dst); }\n")
