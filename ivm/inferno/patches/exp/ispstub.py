@@ -227,11 +227,36 @@ sub(S, "    if (src_ok && dst_ok) { apple_scaler_process(scaler, &src, &dst); }\
 sub(S, "    // SCALER_INFO(\"0x\" HWADDR_FMT_plx \" <- 0x\" HWADDR_FMT_plx, addr, data);\n\n    addr >>= 2;\n",
        "    // SCALER_INFO(\"0x\" HWADDR_FMT_plx \" <- 0x\" HWADDR_FMT_plx, addr, data);\n\n    addr >>= 2;\n"
        "    if (addr < 0x200) { ivm_msr_shadow[addr] = (uint32_t)data; }\n")
-sub(S, "static void apple_scaler_bh(void* opaque)\n",
+sub(S, "static bool apple_scaler_surface_init(AppleScalerSurface* surface, AppleScalerState* scaler, SourceDest srcdst)\n",
        "static uint32_t ivm_msr_shadow[0x200];   /* ivm: last value written to each scaler register */\n"
-       "static void apple_scaler_bh(void* opaque)\n")
+       "static bool apple_scaler_surface_init(AppleScalerSurface* surface, AppleScalerState* scaler, SourceDest srcdst)\n")
 sub(S, "                    (unsigned long long)dst.base[LUMA], (unsigned long long)dst.base[CHROMA], dst_ok, scaler->flip_rotate_cfg);\n",
        "                    (unsigned long long)dst.base[LUMA], (unsigned long long)dst.base[CHROMA], dst_ok, scaler->flip_rotate_cfg);\n"
        "            if (!src_ok) {\n                fprintf(stderr, \"[ivm-msr] regs\");\n"
        "                for (int i = 0x100 / 4; i < 0x200 / 4; i++) { if (ivm_msr_shadow[i]) fprintf(stderr, \" %03x=%x\", i * 4, ivm_msr_shadow[i]); }\n"
        "                fprintf(stderr, \"\\n\");\n            }\n")
+
+# s39 isp45: "linear-compressed" convention. The only producer of compressed camera surfaces in the VM is our fake ISP
+# and the only consumer/producer on the other side is this scaler (no GPU), so a compressed/indirect surface is
+# treated as plain linear data at the plane base (COMP_HEADER_BASE regs 0x1a4/0x1a8 (+0x100 for dst); the fake ISP
+# writes linear NV12 at h2t addr0/addr1 = the same IOSurface plane bases) with stride = align64(row bytes).
+# IVM_MSR_NOLIN disables.
+sub(S, "    if (surface->layout == SCALER_LAYOUT_NONE || surface->width == 0 || surface->height == 0) { return false; }\n",
+       "    if (surface->format == APPLE_SCALER_FORMAT_UNKNOWN && !getenv(\"IVM_MSR_NOLIN\")) {\n"
+       "        uint32_t f2 = cfg->format & ~((1u << 14) | (0xfu << 16) | (1u << 26) | (0xfu << 28));\n"
+       "        AppleScalerFormat fm = apple_scaler_convert_hw_format(f2, cfg->swizzle);\n"
+       "        if (f2 != cfg->format && fm != APPLE_SCALER_FORMAT_UNKNOWN && surface->width && surface->height) {\n"
+       "            AppleScalerLayout ly = apple_scaler_format_layout(fm);\n"
+       "            uint32_t dp = apple_scaler_format_depth(fm);\n"
+       "            uint32_t hb = (0x1a4 + (srcdst == SOURCE ? 0 : 0x100)) / 4;\n"
+       "            if (ly != SCALER_LAYOUT_NONE && ivm_msr_shadow[hb]) {\n"
+       "                uint32_t rb = surface->width * apple_scaler_luma_bpp(ly, dp);\n"
+       "                surface->format = fm; surface->layout = ly; surface->depth = dp;\n"
+       "                surface->stride[LUMA] = surface->stride[CHROMA] = (rb + 63) & ~63u;\n"
+       "                surface->base[LUMA] = ivm_msr_shadow[hb];\n"
+       "                surface->base[CHROMA] = ivm_msr_shadow[hb + 1];\n"
+       "                return true;\n"
+       "            }\n"
+       "        }\n"
+       "    }\n"
+       "    if (surface->layout == SCALER_LAYOUT_NONE || surface->width == 0 || surface->height == 0) { return false; }\n")
