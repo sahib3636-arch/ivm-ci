@@ -416,3 +416,51 @@ void HELPER(ivm_lockfix)(CPUARMState* env, uint64_t pc)
         fprintf(stderr, "[lockfix] pc=%" PRIx64 " err=%d lock@%" PRIx64 " was %x -> 0\n", pc, (int32_t)env->xregs[0], a, v);
     }
 }
+
+/* ---- IVM_USKIP=<fn pc>/<OBJC_IVAR offset var>[,...] (unslid dsc addresses): at an ObjC method entry, if
+ * self->ivar == nil, return immediately (x0 = 0, pc = lr).  Used for camera graph nodes whose Metal
+ * object failed to load (no GPU in the VM), e.g. BWMultiFilterThumbnailNode._filter (FigColorCubeMetalFilter)
+ * which -prepareForCurrentConfigurationToBecomeLive dereferences unconditionally -> mediaserverd SIGSEGV. */
+int             ivm_uskip_n;
+uint64_t        ivm_uskip_pc[8];
+static uint64_t ivm_uskip_ivar[8];
+static long     ivm_uskip_hits;
+static void __attribute__((constructor)) ivm_uskip_init(void)
+{
+    const char* e = getenv("IVM_USKIP");
+    while (e && *e && ivm_uskip_n < 8) {
+        char* end;
+        ivm_uskip_pc[ivm_uskip_n] = strtoull(e, &end, 16);
+        if (*end != '/') {
+            break;
+        }
+        ivm_uskip_ivar[ivm_uskip_n++] = strtoull(end + 1, &end, 16);
+        e = (*end == ',') ? end + 1 : NULL;
+    }
+}
+void HELPER(ivm_uskip)(CPUARMState* env, uint64_t pc)
+{
+    extern uint64_t ivm_dsc_slide;
+    int             k;
+    int32_t         off = 0;
+    uint64_t        v   = 1;
+    for (k = 0; k < ivm_uskip_n; k++) {
+        if (ivm_uskip_pc[k] + ivm_dsc_slide == pc) {
+            break;
+        }
+    }
+    if (k == ivm_uskip_n || !env->xregs[0]) {
+        return;
+    }
+    if (cpu_memory_rw_debug(env_cpu(env), ivm_uskip_ivar[k] + ivm_dsc_slide, &off, 4, false) ||
+        cpu_memory_rw_debug(env_cpu(env), env->xregs[0] + off, &v, 8, false) || v) {
+        return;
+    }
+    if (ivm_uskip_hits++ < 20) {
+        fprintf(stderr, "[uskip] pc=%" PRIx64 " self=%" PRIx64 " ivar+%x nil -> return to %" PRIx64 "\n", pc, env->xregs[0], off,
+                env->xregs[30]);
+    }
+    env->xregs[0] = 0;
+    env->pc       = env->xregs[30];
+    cpu_loop_exit(env_cpu(env));
+}
