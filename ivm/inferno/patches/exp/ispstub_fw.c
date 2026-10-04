@@ -248,6 +248,21 @@ static bool ivm_isp_cmd_respond(uint8_t* b, uint32_t len, uint16_t op)
         ivm_isp_put16(b, len, 0x9e, c->sifr ? 1 : 0);
         return true;
     }
+    case 0x0116: { /* CH_BUFFER_POOL_CONFIG_GET: H10ISPDevice::GetPoolInfo reads count @0xc and 0x10-byte
+                    * entries @0x10 {u16 dynamic pool type, u16 pool id, u32 ?, u32 pool size}. One distinct pool
+                    * per type (all-zero answer made every pool id 0 -> addBufferPoolToFrameReceiver 0xe00002e2). */
+        uint32_t t, max = len >= 0x10 ? ldl_le_p(b + 0xc) : 0;
+        if (max > 0x1d) {
+            max = 0x1d;
+        }
+        for (t = 0; t < max && 0x10 + (t + 1) * 0x10 <= len; t++) {
+            ivm_isp_put16(b, len, 0x10 + t * 0x10, t);
+            ivm_isp_put16(b, len, 0x12 + t * 0x10, t);
+            ivm_isp_put32(b, len, 0x18 + t * 0x10, 8);
+        }
+        ivm_isp_put32(b, len, 0xc, t);
+        return true;
+    }
     default:
         return false;
     }
