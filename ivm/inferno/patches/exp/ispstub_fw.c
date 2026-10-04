@@ -357,6 +357,7 @@ static void ivm_isp_doorbell(uint32_t gb, uint32_t bits)
                         ivm_isp_out_config(1, pk, len);
                         break;
                     case 0x0100: /* CH_START */
+                        ivm_isp_cur_chan = len >= 12 ? ldl_le_p(pk + 8) : 0;
                         ivm_isp_stream(true);
                         break;
                     case 0x0101: /* CH_STOP */
