@@ -178,5 +178,8 @@ sub(T, '    t8030_rtkit_mem_setup(t8030, ca, "ans", "iop-ans-nub", ANS_SIZE);\n'
        '            fprintf(stderr, "[ivm-isp] fake preloaded fw at 0x%" PRIx64 "\\n", (uint64_t)ivm_fw);\n'
        '        }\n'
        '    }\n')
+# the kext maps the preloaded fw at DVA 0 (mapFwCTRRRegion: iovmInsert at 0); keep dart-isp vm-base 0
+sub(T, "    if (prop != NULL && ldl_le_p(prop->data) == 0) { stl_le_p(prop->data, 0x4000); }\n",
+       "    if (prop != NULL && ldl_le_p(prop->data) == 0 && !(getenv(\"IVM_ISP\") && strcmp(name, \"dart-isp\") == 0)) { stl_le_p(prop->data, 0x4000); }\n")
 p_ = root / T; s_ = p_.read_text(); assert s_.count("@@IVM_FW@@") == 1; p_.write_text(s_.replace("@@IVM_FW@@", _FW))
 print("ispstub: ok")
