@@ -14,7 +14,7 @@
 #define IVM_ISP_CH_SM   5
 #define IVM_ISP_SM_SIZE 0x8000u
 #define IVM_ISP_MAXBUF  64
-#define IVM_ISP_NPOOL   16
+#define IVM_ISP_NPOOL   32
 
 typedef struct {
     uint8_t e[0x30];
