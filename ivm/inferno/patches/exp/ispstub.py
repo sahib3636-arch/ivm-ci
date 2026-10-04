@@ -213,7 +213,7 @@ sub(S, "    if (src_ok && dst_ok) { apple_scaler_process(scaler, &src, &dst); }\
        "        if (ivm_msr_n > 0) {\n            ivm_msr_n--;\n"
        "            uint8_t sb[4] = {0}, sc[4] = {0};\n"
        "            if (src_ok) { dma_memory_read(&scaler->dma_as, src.base[LUMA] + src.stride[LUMA] * (src.height / 2) + src.width / 2, sb, 4, MEMTXATTRS_UNSPECIFIED);\n"
-       "                          dma_memory_read(&scaler->dma_as, src.base[CHROMA] + src.stride[CHROMA] * (src.height / 4) + src.width / 2, sc, 4, MEMTXATTRS_UNSPECIFIED); }\n"
+       "                          if (apple_scaler_layout_is_biplanar(src.layout)) dma_memory_read(&scaler->dma_as, src.base[CHROMA] + src.stride[CHROMA] * (src.height / 4) + src.width / 2, sc, 4, MEMTXATTRS_UNSPECIFIED); }\n"
        "            fprintf(stderr, \"[ivm-msr] fc=%u src fmt=0x%x sw=0x%x %s %ux%u st %u/%u base 0x%llx/0x%llx ok=%d Y=%02x%02x%02x%02x C=%02x%02x%02x%02x | \"\n"
        "                    \"dst fmt=0x%x sw=0x%x %s %ux%u st %u/%u base 0x%llx/0x%llx ok=%d rot=0x%x\\n\",\n"
        "                    qatomic_read(&scaler->frame_count), scaler->srcdst[SOURCE].format, scaler->srcdst[SOURCE].swizzle, apple_scaler_stringify_format(src.format), src.width, src.height, src.stride[LUMA], src.stride[CHROMA],\n"
