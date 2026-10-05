@@ -463,7 +463,7 @@ static void ivm_isp_fill_still(const IvmIspBuf* b)
         ivm_isp_fill_yuv(b, 7);
     } else if (getenv("IVM_ISP_STILLFILL") && ivm_isp_out_w[2] && ivm_isp_out_s0[2] >= ivm_isp_out_w[2]) {
         uint32_t ow = ivm_isp_out_w[2], os = ivm_isp_out_s0[2];
-        if ((uint64_t)ow * 4 == (uint64_t)os * 3 || getenv("IVM_ISP_STILL10")) {
+        if (!getenv("IVM_ISP_STILL8") && ((uint64_t)ow * 4 == (uint64_t)os * 3 || getenv("IVM_ISP_STILL10"))) {
             ivm_isp_fill_p10(b, ow, ivm_isp_out_h[2], os, ivm_isp_out_s1[2]);   /* 3x10-bit per u32 */
         } else {
             ivm_isp_fill_yuv(b, 2);   /* 0x0b07 geometry, 8-bit */
