@@ -104,6 +104,44 @@ void HELPER(ivm_utrace)(CPUARMState* env, uint64_t pc)
             }
         }
     }
+    if (getenv("IVM_UTRACE_BT")) {   /* s40: unslid user frame-pointer backtrace + NSException name/reason (x0) */
+        uint64_t fp = env->xregs[29], fr[2], ex[3] = { 0, 0, 0 };
+        int      d;
+        char     t[200];
+        for (d = 0; d < 20 && fp && !(fp & 7); d++) {
+            fr[0] = fr[1] = 0;
+            ivm_u_read(env, fp, fr, sizeof(fr));
+            if (!fr[1]) {
+                break;
+            }
+            fprintf(stderr, "[utrace]   bt#%d %" PRIx64 "\n", d, (fr[1] & 0xfffffffffULL) - ivm_dsc_slide);
+            fp = fr[0];
+        }
+        ivm_u_read(env, env->xregs[0], ex, sizeof(ex));
+        for (d = 1; d < 3; d++) {
+            uint64_t up = 0;
+            if (ivm_u_cfstr(env, ex[d], t, sizeof(t), &up) == 1) {
+                fprintf(stderr, "[utrace]   exc[%d]=\"%s\"\n", d, t);
+            } else {   /* dynamic NSString: show the printable bytes of the object and of its first pointer */
+                uint8_t raw[160];
+                uint64_t p2[3] = { 0, 0, 0 };
+                int      i, o = 0;
+                ivm_u_read(env, ex[d], raw, sizeof(raw));
+                memcpy(p2, raw, sizeof(p2));
+                for (i = 16; i < (int)sizeof(raw) && o < (int)sizeof(t) - 1; i++) {
+                    t[o++] = (raw[i] >= 32 && raw[i] < 127) ? raw[i] : '.';
+                }
+                t[o] = 0;
+                fprintf(stderr, "[utrace]   exc[%d]=%" PRIx64 " raw:%s\n", d, ex[d], t);
+                ivm_u_read(env, p2[2], raw, sizeof(raw));
+                for (i = o = 0; i < (int)sizeof(raw) && o < (int)sizeof(t) - 1; i++) {
+                    t[o++] = (raw[i] >= 32 && raw[i] < 127) ? raw[i] : '.';
+                }
+                t[o] = 0;
+                fprintf(stderr, "[utrace]   exc[%d] *p2:%s\n", d, t);
+            }
+        }
+    }
 }
 
 /* _os_log_impl(void *dso, os_log_t log, os_log_type_t type, const char *format, uint8_t *buf, uint32_t size)
