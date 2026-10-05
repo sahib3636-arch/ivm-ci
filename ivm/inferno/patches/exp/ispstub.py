@@ -338,3 +338,18 @@ sub(S, "        buf = g_malloc((size_t)cw * 2 * ch);\n"
        "        apple_scaler_dma_rows(as, src->base[CHROMA], src->stride[CHROMA], crb, ch, buf, false);\n"
        "        apple_scaler_dma_rows(as, dst->base[CHROMA], dst->stride[CHROMA], crb, ch, buf, true);\n")
 print("ispstub: p10 ok")
+
+# s40: scaler job cost (runs synchronously in the vCPU MMIO write with the BQL held) -> "[ivm-msr] cost" every 300 jobs
+sub(S, "    if (src_ok && dst_ok) { apple_scaler_process(scaler, &src, &dst); }\n",
+       "    if (src_ok && dst_ok) {\n"
+       "        static int64_t ivm_msr_tsum, ivm_msr_tmax; static uint32_t ivm_msr_tn;\n"
+       "        int64_t ivm_t0 = g_get_monotonic_time();\n"
+       "        apple_scaler_process(scaler, &src, &dst);\n"
+       "        int64_t ivm_d = g_get_monotonic_time() - ivm_t0;\n"
+       "        ivm_msr_tsum += ivm_d; ivm_msr_tmax = MAX(ivm_msr_tmax, ivm_d);\n"
+       "        if (++ivm_msr_tn == 300) {\n"
+       "            fprintf(stderr, \"[ivm-msr] cost: avg %lld us max %lld us per job (300 jobs)\\n\", (long long)(ivm_msr_tsum / 300), (long long)ivm_msr_tmax);\n"
+       "            ivm_msr_tsum = ivm_msr_tmax = 0; ivm_msr_tn = 0;\n"
+       "        }\n"
+       "    }\n")
+print("ispstub: msr cost ok")
