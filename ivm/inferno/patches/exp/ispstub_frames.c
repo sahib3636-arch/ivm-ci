@@ -642,7 +642,11 @@ static void ivm_isp_frame_tick(void* opaque)
     if (!ivm_isp_streaming) {
         return;
     }
-    timer_mod(ivm_isp_ftimer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + 66);
+    {   /* IVM_ISP_FPS (default 15): preview frame rate of the fake ISP */
+        static int period = -1;
+        if (period < 0) { const char* e = getenv("IVM_ISP_FPS"); int f = e ? atoi(e) : 15; period = 1000 / MAX(5, MIN(30, f)); }
+        timer_mod(ivm_isp_ftimer, qemu_clock_get_ms(QEMU_CLOCK_VIRTUAL) + period);
+    }
     ivm_feed_publish(true);
     ivm_feed_snapshot();
     if (ivm_isp_sm_state != 2) {
