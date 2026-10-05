@@ -317,7 +317,7 @@ static void ivm_isp_doorbell(uint32_t gb, uint32_t bits)
                 for (n = 0; n < sizeof(c); n++) {
                     snprintf(hex + 2 * n, 3, "%02x", c[n]);
                 }
-                fprintf(stderr, "[ivm-isp] fw: cmd #%ld %s[%u] addr=0x%x len=0x%x op=0x%04x [%s] -> ack\n", ivm_isp_ncmd,
+                if (ivm_isp_maxlog) fprintf(stderr, "[ivm-isp] fw: cmd #%ld %s[%u] addr=0x%x len=0x%x op=0x%04x [%s] -> ack\n", ivm_isp_ncmd,
                         ivm_isp_chans[i].name, k, le32_to_cpu(w[0]), le32_to_cpu(w[1]), lduw_le_p(c + 4), hex);
             }
             if (ivm_isp_dma_ok && i == IVM_ISP_CH_H2T) {
@@ -334,8 +334,8 @@ static void ivm_isp_doorbell(uint32_t gb, uint32_t bits)
                         if (!seen) {
                             seen = g_hash_table_new(g_direct_hash, g_direct_equal);
                         }
-                        if (!g_hash_table_contains(seen, GUINT_TO_POINTER((guint)op + 1)) || op == 0x0117 ||
-                            op == 0x0b01 || op == 0x0b09 || op == 0x0b07 || op == 0x0115) {
+                        if (ivm_isp_maxlog && (!g_hash_table_contains(seen, GUINT_TO_POINTER((guint)op + 1)) || op == 0x0117 ||
+                            op == 0x0b01 || op == 0x0b09 || op == 0x0b07 || op == 0x0115)) {
                             uint32_t n, m = len < 0x200 ? len : 0x200;
                             GString* gs = g_string_new(NULL);
                             g_hash_table_add(seen, GUINT_TO_POINTER((guint)op + 1));
