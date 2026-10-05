@@ -399,6 +399,8 @@ static void ivm_isp_fill_still(const IvmIspBuf* b)
     if (e && sscanf(e, "%u,%u,%u", &w, &h, &st) == 3 && w && h && st >= w) {
         ivm_isp_out_w[7] = w; ivm_isp_out_h[7] = h; ivm_isp_out_s0[7] = st; ivm_isp_out_s1[7] = st;
         ivm_isp_fill_yuv(b, 7);
+    } else if (getenv("IVM_ISP_STILLFILL") && ivm_isp_out_w[2] && ivm_isp_out_s0[2] >= ivm_isp_out_w[2]) {
+        ivm_isp_fill_yuv(b, 2);   /* 0x0b07 geometry (opt-in until the still surface layout is confirmed) */
     }
 }
 
