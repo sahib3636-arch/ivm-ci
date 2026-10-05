@@ -469,14 +469,14 @@ void HELPER(ivm_uskip)(CPUARMState* env, uint64_t pc)
  * executes, set x<reg> = val.  s39: force CMPhoto option reads, e.g. JPEGSoftwareEncode in
  * FigPhotoJPEGEncoder (MediaToolbox 0x18c250eb0: w0 = option value -> 1) since the VM has no AppleJPEG HW. */
 int             ivm_uset_n;
-uint64_t        ivm_uset_pc[8];
-static uint32_t ivm_uset_reg[8];
-static uint64_t ivm_uset_val[8];
+uint64_t        ivm_uset_pc[12];
+static uint32_t ivm_uset_reg[12];
+static uint64_t ivm_uset_val[12];
 static long     ivm_uset_hits;
 static void __attribute__((constructor)) ivm_uset_init(void)
 {
     const char* e = getenv("IVM_USET");
-    while (e && *e && ivm_uset_n < 8) {
+    while (e && *e && ivm_uset_n < 12) {
         char* end;
         ivm_uset_pc[ivm_uset_n] = strtoull(e, &end, 16);
         if (*end != ':') {
@@ -496,7 +496,9 @@ void HELPER(ivm_uset)(CPUARMState* env, uint64_t pc)
     int             k;
     for (k = 0; k < ivm_uset_n; k++) {
         if (ivm_uset_pc[k] + ivm_dsc_slide == pc && ivm_uset_reg[k] < 31) {
-            if (ivm_uset_hits++ < 40) {
+            static long per[12];
+            ivm_uset_hits++;
+            if (per[k]++ < 6) {   /* s40: per-entry cap so every entry shows up */
                 fprintf(stderr, "[uset] pc=%" PRIx64 " x%u %" PRIx64 " -> %" PRIx64 "\n", pc, ivm_uset_reg[k],
                         env->xregs[ivm_uset_reg[k]], ivm_uset_val[k]);
             }
