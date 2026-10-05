@@ -52,8 +52,8 @@ static void ivm_isp_out_config(uint32_t idx, const uint8_t* pk, uint32_t len)
         ivm_isp_out_h[idx]  = ldl_le_p(pk + 0x10);
         ivm_isp_out_s0[idx] = ldl_le_p(pk + 0x1c);
         ivm_isp_out_s1[idx] = ldl_le_p(pk + 0x20);
-        fprintf(stderr, "[ivm-isp] fw: output %u = %ux%u strides %u/%u\n", idx, ivm_isp_out_w[idx], ivm_isp_out_h[idx],
-                ivm_isp_out_s0[idx], ivm_isp_out_s1[idx]);
+        fprintf(stderr, "[ivm-isp] fw: output %u = %ux%u strides %u/%u w14=%08x w18=%08x\n", idx, ivm_isp_out_w[idx], ivm_isp_out_h[idx],
+                ivm_isp_out_s0[idx], ivm_isp_out_s1[idx], ldl_le_p(pk + 0x14), ldl_le_p(pk + 0x18));
     }
 }
 static uint32_t   ivm_isp_sm_addr, ivm_isp_sm_state; /* 0 none, 1 requested, 2 ready */
@@ -390,6 +390,68 @@ static void ivm_isp_fill_meta(const IvmIspBuf* b, uint32_t pool)
     address_space_write(&ivm_isp_dma_as, a, MEMTXATTRS_UNSPECIFIED, hdr, sizeof(hdr));
 }
 
+/* s39 isp62: still surface from 0x0b07 is 4224x3168 stride 5632 = w*4/3 -> 10-bit packed bi-planar
+ * (3 samples per LE u32, bits 0-9/10-19/20-29). Source = phone feed (8-bit NV12) or the test ramp. */
+static void ivm_isp_fill_p10(const IvmIspBuf* b, uint32_t w, uint32_t h, uint32_t s0, uint32_t s1)
+{
+    uint32_t y0 = ldl_le_p(b->e), y1 = ldl_le_p(b->e + 4), x, y, n;
+    uint8_t  pre[16];
+    if (!w || !h || w > 8192 || h > 8192 || !y0 || s0 > 16384) {
+        return;
+    }
+    address_space_read(&ivm_isp_dma_as, y0 + (h / 2) * s0, MEMTXATTRS_UNSPECIFIED, pre, 16);
+    fprintf(stderr, "[ivm-isp] fw: still p10 %ux%u s=%u/%u y=%08x uv=%08x pre=%02x%02x%02x%02x%02x%02x%02x%02x feed=%d\n",
+            w, h, s0, s1, y0, y1, pre[0], pre[1], pre[2], pre[3], pre[4], pre[5], pre[6], pre[7], ivm_feed_state);
+    bool feed = ivm_feed_state == 1 && ivm_feed_copy && ivm_feed_cseq;
+    uint32_t sw = feed ? ivm_feed_cw : 1, sh = feed ? ivm_feed_ch : 1, cx = 0, cy = 0, cw = sw, chh = sh;
+    bool mir = feed && (ivm_feed_cflags & 1);
+    if (feed) {
+        if ((uint64_t)sw * h > (uint64_t)sh * w) {
+            cw = (uint32_t)((uint64_t)sh * w / h) & ~1u; cx = ((sw - cw) / 2) & ~1u;
+        } else {
+            chh = (uint32_t)((uint64_t)sw * h / w) & ~1u; cy = ((sh - chh) / 2) & ~1u;
+        }
+    }
+    uint32_t* xm  = g_malloc((w + 3) * sizeof(uint32_t));
+    uint16_t* smp = g_malloc((w + 3) * sizeof(uint16_t));
+    uint8_t*  row = g_malloc(s0 > s1 ? s0 : (s1 ? s1 : s0));
+    for (x = 0; x < w; x++) {
+        uint32_t sx = cx + (uint32_t)((uint64_t)x * cw / w);
+        xm[x] = mir ? (sw - 1 - sx) : sx;
+    }
+    uint32_t words = (w + 2) / 3;
+    for (y = 0; y < h; y++) {
+        const uint8_t* src = feed ? ivm_feed_copy + (size_t)(cy + (uint32_t)((uint64_t)y * chh / h)) * sw : NULL;
+        for (x = 0; x < w; x++) {
+            smp[x] = (uint16_t)((src ? src[xm[x]] : (uint8_t)(40 + (y * 150) / h + (((x / 96) & 1) ? 30 : 0))) << 2);
+        }
+        smp[w] = smp[w + 1] = smp[w + 2] = 0;
+        for (n = 0; n < words && n * 4 + 4 <= s0; n++) {
+            stl_le_p(row + n * 4, smp[n * 3] | (smp[n * 3 + 1] << 10) | ((uint32_t)smp[n * 3 + 2] << 20));
+        }
+        address_space_write(&ivm_isp_dma_as, y0 + y * s0, MEMTXATTRS_UNSPECIFIED, row, n * 4);
+    }
+    if (y1 && s1) {
+        const uint8_t* uvb = feed ? ivm_feed_copy + (size_t)sw * sh : NULL;
+        for (y = 0; y < h / 2; y++) {
+            const uint8_t* src = feed ? uvb + (size_t)((cy + (uint32_t)((uint64_t)(y * 2) * chh / h)) / 2) * sw : NULL;
+            for (x = 0; x + 1 < w; x += 2) {
+                uint32_t sx = xm[x] & ~1u, band = (x * 6) / w;
+                static const uint8_t uv[6][2] = { { 90, 240 }, { 54, 34 }, { 240, 110 }, { 128, 128 }, { 200, 200 }, { 60, 160 } };
+                smp[x]     = (uint16_t)((src ? src[sx] : uv[band][0]) << 2);
+                smp[x + 1] = (uint16_t)((src ? src[sx + 1] : uv[band][1]) << 2);
+            }
+            smp[w] = smp[w + 1] = smp[w + 2] = 512;
+            for (n = 0; n < words && n * 4 + 4 <= s1; n++) {
+                stl_le_p(row + n * 4, smp[n * 3] | (smp[n * 3 + 1] << 10) | ((uint32_t)smp[n * 3 + 2] << 20));
+            }
+            address_space_write(&ivm_isp_dma_as, y1 + y * s1, MEMTXATTRS_UNSPECIFIED, row, n * 4);
+        }
+    }
+    g_free(xm); g_free(smp); g_free(row);
+    fprintf(stderr, "[ivm-isp] fw: still p10 filled (feed=%d)\n", feed);
+}
+
 static void ivm_isp_fill_still(const IvmIspBuf* b)
 {
     const char* e = getenv("IVM_ISP_STILLWH");
@@ -400,7 +462,12 @@ static void ivm_isp_fill_still(const IvmIspBuf* b)
         ivm_isp_out_w[7] = w; ivm_isp_out_h[7] = h; ivm_isp_out_s0[7] = st; ivm_isp_out_s1[7] = st;
         ivm_isp_fill_yuv(b, 7);
     } else if (getenv("IVM_ISP_STILLFILL") && ivm_isp_out_w[2] && ivm_isp_out_s0[2] >= ivm_isp_out_w[2]) {
-        ivm_isp_fill_yuv(b, 2);   /* 0x0b07 geometry (opt-in until the still surface layout is confirmed) */
+        uint32_t ow = ivm_isp_out_w[2], os = ivm_isp_out_s0[2];
+        if ((uint64_t)ow * 4 == (uint64_t)os * 3 || getenv("IVM_ISP_STILL10")) {
+            ivm_isp_fill_p10(b, ow, ivm_isp_out_h[2], os, ivm_isp_out_s1[2]);   /* 3x10-bit per u32 */
+        } else {
+            ivm_isp_fill_yuv(b, 2);   /* 0x0b07 geometry, 8-bit */
+        }
     }
 }
 
