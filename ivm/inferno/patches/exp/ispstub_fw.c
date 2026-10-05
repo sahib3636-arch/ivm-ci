@@ -356,6 +356,9 @@ static void ivm_isp_doorbell(uint32_t gb, uint32_t bits)
                     case 0x0b09: /* secondary scaler output config */
                         ivm_isp_out_config(1, pk, len);
                         break;
+                    case 0x0b07: /* s39: still (capture) output config */
+                        ivm_isp_out_config(2, pk, len);
+                        break;
                     case 0x0100: /* CH_START */
                         ivm_isp_cur_chan = len >= 12 ? ldl_le_p(pk + 8) : 0;
                         ivm_isp_stream(true);
