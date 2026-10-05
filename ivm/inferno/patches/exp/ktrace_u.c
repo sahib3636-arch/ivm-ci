@@ -521,7 +521,7 @@ static void __attribute__((constructor)) ivm_uset_init(void)
         if (*end != ':') {
             break;
         }
-        ivm_uset_reg[ivm_uset_n] = (uint32_t)strtoul(end + 1, &end, 10) & 31;
+        ivm_uset_reg[ivm_uset_n] = (uint32_t)strtoul(end + 1, &end, 10);   /* 32 = branch (see below) */
         if (*end != '=') {
             break;
         }
@@ -539,10 +539,37 @@ void HELPER(ivm_uset)(CPUARMState* env, uint64_t pc)
     extern uint64_t ivm_dsc_slide;
     int             k;
     for (k = 0; k < ivm_uset_n; k++) {
-        if (ivm_uset_pc[k] + ivm_dsc_slide == pc && ivm_uset_reg[k] < 31 &&
+        if (ivm_uset_pc[k] + ivm_dsc_slide == pc && (ivm_uset_reg[k] < 31 || ivm_uset_reg[k] >= 32) &&
             (ivm_uset_cond[k] < 0 || (ivm_uset_cond[k] < 31 && !env->xregs[ivm_uset_cond[k]]))) {
             static long per[12];
             ivm_uset_hits++;
+            if (ivm_uset_reg[k] == 32) {   /* s40: "pc:32=<target>/<zreg>" = branch to <target> instead of running
+                                            * the instruction at pc, when x[zreg] == 0.  For calls that abort on a
+                                            * nil argument: Photos -[PXGTextureManager _textureAtlasManagerForImage
+                                            * DataSpec:] does [array arrayByAddingObject:nilAtlasManager] -> NSInvalid
+                                            * ArgumentException -> abort; skipping the call leaves the receiver in x0,
+                                            * which is what arrayByAddingObject: would have returned for nil. */
+                if (per[k]++ < 6) {
+                    fprintf(stderr, "[uset] br pc=%" PRIx64 " -> %" PRIx64 " (x%d == 0)\n", pc, ivm_uset_val[k],
+                            ivm_uset_cond[k]);
+                }
+                env->pc = ivm_uset_val[k] + ivm_dsc_slide;
+                cpu_loop_exit(env_cpu(env));
+            }
+            if (ivm_uset_reg[k] == 33) {   /* s40: "pc:33=0[/<zreg>]" = return to the caller (pc = x30) without
+                                            * running the method at pc, when x[zreg] == 0 (or always).  Skips whole
+                                            * methods that need the GPU, e.g. Photos -[PXGTextureProvider provideImage
+                                            * Data:...] whose atlas manager is nil without a Metal device.  Only valid
+                                            * at a function entry (no frame has been pushed yet). */
+                if (per[k]++ < 6) {
+                    fprintf(stderr, "[uset] ret pc=%" PRIx64 " -> lr=%" PRIx64 "\n", pc, env->xregs[30]);
+                }
+                if (ivm_uset_val[k] == 1) {
+                    env->xregs[0] = 0;
+                }
+                env->pc = env->xregs[30];
+                cpu_loop_exit(env_cpu(env));
+            }
             if (per[k]++ < 6) {   /* s40: per-entry cap so every entry shows up */
                 fprintf(stderr, "[uset] pc=%" PRIx64 " x%u %" PRIx64 " -> %" PRIx64 "\n", pc, ivm_uset_reg[k],
                         env->xregs[ivm_uset_reg[k]], ivm_uset_val[k]);
