@@ -390,6 +390,18 @@ static void ivm_isp_fill_meta(const IvmIspBuf* b, uint32_t pool)
     address_space_write(&ivm_isp_dma_as, a, MEMTXATTRS_UNSPECIFIED, hdr, sizeof(hdr));
 }
 
+static void ivm_isp_fill_still(const IvmIspBuf* b)
+{
+    const char* e = getenv("IVM_ISP_STILLWH");
+    unsigned    w = 0, h = 0, st = 0;
+    fprintf(stderr, "[ivm-isp] fw: still buf iova=%08x/%08x/%08x len=%08x/%08x f20=%x\n", ldl_le_p(b->e),
+            ldl_le_p(b->e + 4), ldl_le_p(b->e + 8), ldl_le_p(b->e + 0x10), ldl_le_p(b->e + 0x14), ldl_le_p(b->e + 0x20));
+    if (e && sscanf(e, "%u,%u,%u", &w, &h, &st) == 3 && w && h && st >= w) {
+        ivm_isp_out_w[7] = w; ivm_isp_out_h[7] = h; ivm_isp_out_s0[7] = st; ivm_isp_out_s1[7] = st;
+        ivm_isp_fill_yuv(b, 7);
+    }
+}
+
 static void ivm_isp_frame_tick(void* opaque)
 {
     uint32_t pool, k, n = 0;
@@ -416,6 +428,42 @@ static void ivm_isp_frame_tick(void* opaque)
         return;
     }
     memset(msg, 0, sizeof(msg));
+    /* s39 still capture (isp52): the kernel queues one pool-5 (still image) buffer per shot.  H10ISP
+     * MyH10ISPFrameReceivedProc treats a frame carrying the still buffer as a still frame and requires
+     * YUV + META with the regular preview metadata absent ("Didn't get YUV+META buffers" otherwise), so the
+     * still goes out alone in its own T2H message together with the pools in IVM_ISP_STILLSET (hex mask of
+     * fw pool ids; default pool 8). */
+    {
+        int      ss = -1;
+        uint32_t i, mask;
+        for (i = 0; i < IVM_ISP_NPOOL; i++) {
+            if (ivm_isp_poolid[i] == 5 + 1 && ivm_isp_bufn[i]) {
+                ss = (int)i;
+            }
+        }
+        if (ss >= 0) {
+            const char* e = getenv("IVM_ISP_STILLSET");
+            mask = e ? (uint32_t)strtoul(e, NULL, 16) : (1u << 8);
+            for (i = 0; i < IVM_ISP_NPOOL && n < 8; i++) {
+                uint32_t id = ivm_isp_poolid[i] - 1;
+                IvmIspBuf b;
+                if (!ivm_isp_poolid[i] || !ivm_isp_bufn[i] || ((int)i != ss && (id >= 32 || !(mask & (1u << id))))) {
+                    continue;
+                }
+                b = ivm_isp_bufq[i][0];
+                memmove(&ivm_isp_bufq[i][0], &ivm_isp_bufq[i][1], (--ivm_isp_bufn[i]) * sizeof(IvmIspBuf));
+                if ((int)i == ss) {
+                    ivm_isp_fill_still(&b);
+                } else if (id == 0 || id == 2 || id == 8) {
+                    ivm_isp_fill_meta(&b, i);
+                }
+                memcpy(msg + 8 + n * 0x30, b.e, 0x30);
+                n++;
+            }
+            fprintf(stderr, "[ivm-isp] fw: still frame (%u bufs, set %x)\n", n, mask);
+            goto send;
+        }
+    }
     for (pool = 0; pool < IVM_ISP_NPOOL && n < 8; pool++) {
         IvmIspBuf b;
         if (!ivm_isp_bufn[pool]) {
@@ -436,6 +484,7 @@ static void ivm_isp_frame_tick(void* opaque)
         memcpy(msg + 8 + n * 0x30, b.e, 0x30);
         n++;
     }
+send:
     if (!n) {
         return;
     }
