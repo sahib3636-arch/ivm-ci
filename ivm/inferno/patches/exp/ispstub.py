@@ -55,6 +55,7 @@ static long     ivm_isp_rep;
 static void ivm_isp_log(char k, IvmIspRegion* r, hwaddr off, unsigned size, uint64_t val)
 {
     uint64_t lr = 0;
+    if (!ivm_isp_maxlog) { return; }   /* IVM_ISP_LOG=0 (shipped app): no MMIO trace at all */
     if (current_cpu) { lr = ARM_CPU(current_cpu)->env.xregs[30]; }
     if (k == ivm_isp_last_k && r->idx == ivm_isp_last_idx && off == ivm_isp_last_off && val == ivm_isp_last_val && lr == ivm_isp_last_lr) {
         ivm_isp_rep++;
