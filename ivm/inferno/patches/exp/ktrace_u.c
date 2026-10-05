@@ -510,6 +510,7 @@ int             ivm_uset_n;
 uint64_t        ivm_uset_pc[12];
 static uint32_t ivm_uset_reg[12];
 static uint64_t ivm_uset_val[12];
+static int      ivm_uset_cond[12];
 static long     ivm_uset_hits;
 static void __attribute__((constructor)) ivm_uset_init(void)
 {
@@ -524,7 +525,12 @@ static void __attribute__((constructor)) ivm_uset_init(void)
         if (*end != '=') {
             break;
         }
-        ivm_uset_val[ivm_uset_n++] = strtoull(end + 1, &end, 16);
+        ivm_uset_val[ivm_uset_n] = strtoull(end + 1, &end, 16);
+        ivm_uset_cond[ivm_uset_n] = -1;
+        if (*end == '/') {   /* s40: "pc:reg=val/zreg" = only when x[zreg] == 0 */
+            ivm_uset_cond[ivm_uset_n] = (int)(strtoul(end + 1, &end, 10) & 31);
+        }
+        ivm_uset_n++;
         e = (*end == ',') ? end + 1 : NULL;
     }
 }
@@ -533,7 +539,8 @@ void HELPER(ivm_uset)(CPUARMState* env, uint64_t pc)
     extern uint64_t ivm_dsc_slide;
     int             k;
     for (k = 0; k < ivm_uset_n; k++) {
-        if (ivm_uset_pc[k] + ivm_dsc_slide == pc && ivm_uset_reg[k] < 31) {
+        if (ivm_uset_pc[k] + ivm_dsc_slide == pc && ivm_uset_reg[k] < 31 &&
+            (ivm_uset_cond[k] < 0 || (ivm_uset_cond[k] < 31 && !env->xregs[ivm_uset_cond[k]]))) {
             static long per[12];
             ivm_uset_hits++;
             if (per[k]++ < 6) {   /* s40: per-entry cap so every entry shows up */
