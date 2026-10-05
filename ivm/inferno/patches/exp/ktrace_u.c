@@ -464,3 +464,43 @@ void HELPER(ivm_uskip)(CPUARMState* env, uint64_t pc)
     env->pc       = env->xregs[30];
     cpu_loop_exit(env_cpu(env));
 }
+
+/* ---- IVM_USET=<pc>:<reg>=<hex val>[,...] (unslid dsc addresses, max 8): before the instruction at pc
+ * executes, set x<reg> = val.  s39: force CMPhoto option reads, e.g. JPEGSoftwareEncode in
+ * FigPhotoJPEGEncoder (MediaToolbox 0x18c250eb0: w0 = option value -> 1) since the VM has no AppleJPEG HW. */
+int             ivm_uset_n;
+uint64_t        ivm_uset_pc[8];
+static uint32_t ivm_uset_reg[8];
+static uint64_t ivm_uset_val[8];
+static long     ivm_uset_hits;
+static void __attribute__((constructor)) ivm_uset_init(void)
+{
+    const char* e = getenv("IVM_USET");
+    while (e && *e && ivm_uset_n < 8) {
+        char* end;
+        ivm_uset_pc[ivm_uset_n] = strtoull(e, &end, 16);
+        if (*end != ':') {
+            break;
+        }
+        ivm_uset_reg[ivm_uset_n] = (uint32_t)strtoul(end + 1, &end, 10) & 31;
+        if (*end != '=') {
+            break;
+        }
+        ivm_uset_val[ivm_uset_n++] = strtoull(end + 1, &end, 16);
+        e = (*end == ',') ? end + 1 : NULL;
+    }
+}
+void HELPER(ivm_uset)(CPUARMState* env, uint64_t pc)
+{
+    extern uint64_t ivm_dsc_slide;
+    int             k;
+    for (k = 0; k < ivm_uset_n; k++) {
+        if (ivm_uset_pc[k] + ivm_dsc_slide == pc && ivm_uset_reg[k] < 31) {
+            if (ivm_uset_hits++ < 40) {
+                fprintf(stderr, "[uset] pc=%" PRIx64 " x%u %" PRIx64 " -> %" PRIx64 "\n", pc, ivm_uset_reg[k],
+                        env->xregs[ivm_uset_reg[k]], ivm_uset_val[k]);
+            }
+            env->xregs[ivm_uset_reg[k]] = ivm_uset_val[k];
+        }
+    }
+}
