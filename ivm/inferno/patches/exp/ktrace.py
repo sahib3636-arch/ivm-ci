@@ -120,7 +120,7 @@ sub("target/arm/tcg/translate-a64.c", "    s->pc_curr      = pc;\n    insn      
                     if (ivm_uskip_pc[k] == upc) { gen_helper_ivm_uskip(tcg_env, tcg_constant_i64(pc)); break; }
                 }
                 extern int      ivm_uset_n;
-                extern uint64_t ivm_uset_pc[8];
+                extern uint64_t ivm_uset_pc[12];
                 for (k = 0; k < ivm_uset_n; k++) {
                     if (ivm_uset_pc[k] == upc) { gen_helper_ivm_uset(tcg_env, tcg_constant_i64(pc)); break; }
                 }
