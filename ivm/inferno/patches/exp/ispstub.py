@@ -290,3 +290,51 @@ sub(A, "    for (i = 0; i < ADP_V4_GP_COUNT; ++i) { adp_v4_gp_draw(&adp->genpipe
        "            int j = ivm_adp_rev ? ADP_V4_GP_COUNT - 1 - i : i;\n"
        "            adp_v4_gp_draw(&adp->genpipe[j], &adp->dma_as, disp_image, adp->console);\n"
        "        }\n    }\n")
+
+# s39 isp64: PW20_P420 still surfaces (see scaler_p10.c). Inferno rejected the format (layout NONE) -> every still
+# scaler job (still -> 2212x1660 / 1104x828 / 4032x3024 crop / BGRA thumbs) left zeros (green thumb, black photo).
+_P10 = (pathlib.Path(__file__).resolve().parent / "scaler_p10.c").read_text()
+sub(S, "static uint32_t ivm_msr_shadow[0x200];", _P10 + "static uint32_t ivm_msr_shadow[0x200];")
+sub(S, "        case APPLE_SCALER_FORMAT_YUV_420  : return SCALER_LAYOUT_BIPLANAR_420;\n",
+       "        case APPLE_SCALER_FORMAT_YUV_420  :\n        case APPLE_SCALER_FORMAT_PW20_P420: return SCALER_LAYOUT_BIPLANAR_420;\n")
+# load
+sub(S, "    apple_scaler_image_init(image, apple_scaler_layout_kind(layout), surface->width, surface->height);\n\n"
+       "    if (apple_scaler_layout_is_biplanar(layout)) {\n",
+       "    apple_scaler_image_init(image, apple_scaler_layout_kind(layout), surface->width, surface->height);\n\n"
+       "    if (surface->format == APPLE_SCALER_FORMAT_PW20_P420) {\n"
+       "        uint32_t cw, ch;\n        uint8_t* plane1;\n"
+       "        ivm_p10_rows(as, surface->base[LUMA], surface->stride[LUMA], surface->width, surface->height, image->plane[0], image->stride[0], false, 0);\n"
+       "        apple_scaler_chroma_dims(layout, surface->width, surface->height, &cw, &ch);\n"
+       "        plane1 = g_malloc((size_t)cw * 2 * ch);\n"
+       "        ivm_p10_rows(as, surface->base[CHROMA], surface->stride[CHROMA], cw * 2, ch, plane1, cw * 2, false, 0);\n"
+       "        apple_scaler_chroma_split(image, plane1, (int)(cw * 2));\n"
+       "        g_free(plane1);\n        return true;\n    }\n"
+       "    if (apple_scaler_layout_is_biplanar(layout)) {\n")
+# store
+sub(S, "    uint32_t          row_bytes = image->width * apple_scaler_luma_bpp(surface->layout, surface->depth);\n"
+       "    uint8_t*          staging;\n    int               ret;\n\n"
+       "    if (apple_scaler_layout_is_biplanar(layout)) {\n",
+       "    uint32_t          row_bytes = image->width * apple_scaler_luma_bpp(surface->layout, surface->depth);\n"
+       "    uint8_t*          staging;\n    int               ret;\n\n"
+       "    if (surface->format == APPLE_SCALER_FORMAT_PW20_P420) {\n"
+       "        uint32_t cw, ch;\n        uint8_t* plane1;\n"
+       "        ivm_p10_rows(as, surface->base[LUMA], surface->stride[LUMA], image->width, image->height, image->plane[0], image->stride[0], true, 0);\n"
+       "        apple_scaler_chroma_dims(layout, image->width, image->height, &cw, &ch);\n"
+       "        plane1 = g_malloc((size_t)cw * 2 * ch);\n"
+       "        apple_scaler_chroma_merge(image, plane1, (int)(cw * 2));\n"
+       "        ivm_p10_rows(as, surface->base[CHROMA], surface->stride[CHROMA], cw * 2, ch, plane1, cw * 2, true, 128);\n"
+       "        g_free(plane1);\n        return true;\n    }\n"
+       "    if (apple_scaler_layout_is_biplanar(layout)) {\n")
+# blit (identity copy): packed row bytes
+sub(S, "    uint32_t row_bytes = src->width * apple_scaler_luma_bpp(src->layout, src->depth);\n    uint8_t* buf;\n\n"
+       "    buf = g_malloc((size_t)row_bytes * src->height);\n",
+       "    uint32_t row_bytes = src->format == APPLE_SCALER_FORMAT_PW20_P420 ? ivm_p10_rb(src->width) : src->width * apple_scaler_luma_bpp(src->layout, src->depth);\n    uint8_t* buf;\n\n"
+       "    buf = g_malloc((size_t)row_bytes * src->height);\n")
+sub(S, "        buf = g_malloc((size_t)cw * 2 * ch);\n"
+       "        apple_scaler_dma_rows(as, src->base[CHROMA], src->stride[CHROMA], cw * 2, ch, buf, false);\n"
+       "        apple_scaler_dma_rows(as, dst->base[CHROMA], dst->stride[CHROMA], cw * 2, ch, buf, true);\n",
+       "        uint32_t crb = src->format == APPLE_SCALER_FORMAT_PW20_P420 ? ivm_p10_rb(cw * 2) : cw * 2;\n"
+       "        buf = g_malloc((size_t)crb * ch);\n"
+       "        apple_scaler_dma_rows(as, src->base[CHROMA], src->stride[CHROMA], crb, ch, buf, false);\n"
+       "        apple_scaler_dma_rows(as, dst->base[CHROMA], dst->stride[CHROMA], crb, ch, buf, true);\n")
+print("ispstub: p10 ok")
