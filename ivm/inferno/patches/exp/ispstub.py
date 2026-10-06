@@ -353,3 +353,160 @@ sub(S, "    if (src_ok && dst_ok) { apple_scaler_process(scaler, &src, &dst); }\
        "        }\n"
        "    }\n")
 print("ispstub: msr cost ok")
+
+# s40 msr-fast: (1) the per-row DMA path (stride != row bytes) issues one dma_memory_read/write per row, i.e. ~1700
+# IOMMU page walks + RCU read locks for one 1504x1128 surface.  Do one bulk DMA of the strided block and (un)pack
+# the rows locally instead (IVM_MSR_ROWS=0 restores the old path).  (2) time the phases of apple_scaler_process
+# (load/rotate/mirror/scale/convert/store) -> "[ivm-msr] phases" every 300 jobs.
+_ROWS_OLD = """static void apple_scaler_dma_rows(AddressSpace* as, dma_addr_t base, uint32_t stride, uint32_t row_bytes,
+                                  uint32_t height, void* buf, bool write)
+{
+    uint8_t* rows = buf;
+
+    if (row_bytes == 0 || height == 0) { return; }
+
+    if (stride == row_bytes) {
+        size_t total = (size_t)row_bytes * height;
+        if (write) { dma_memory_write(as, base, rows, total, MEMTXATTRS_UNSPECIFIED); }
+        else {
+            dma_memory_read(as, base, rows, total, MEMTXATTRS_UNSPECIFIED);
+        }
+        return;
+    }
+
+    for (uint32_t y = 0; y < height; y++) {
+        dma_addr_t addr = base + (dma_addr_t)y * stride;
+        uint8_t*   row  = rows + (size_t)y * row_bytes;
+        if (write) { dma_memory_write(as, addr, row, row_bytes, MEMTXATTRS_UNSPECIFIED); }
+        else {
+            dma_memory_read(as, addr, row, row_bytes, MEMTXATTRS_UNSPECIFIED);
+        }
+    }
+}"""
+
+_ROWS_NEW = """static void apple_scaler_dma_rows(AddressSpace* as, dma_addr_t base, uint32_t stride, uint32_t row_bytes,
+                                  uint32_t height, void* buf, bool write)
+{
+    uint8_t* rows = buf;
+
+    if (row_bytes == 0 || height == 0) { return; }
+
+    if (stride == row_bytes) {
+        size_t total = (size_t)row_bytes * height;
+        if (write) { dma_memory_write(as, base, rows, total, MEMTXATTRS_UNSPECIFIED); }
+        else {
+            dma_memory_read(as, base, rows, total, MEMTXATTRS_UNSPECIFIED);
+        }
+        return;
+    }
+
+    {   /* ivm: one IOMMU walk over the whole strided block instead of one per row (the padding between rows
+         * belongs to the surface; the padding after the last row is never touched) */
+        static int ivm_rows_fast = -1;
+        if (ivm_rows_fast < 0) { const char* e = getenv("IVM_MSR_ROWS"); ivm_rows_fast = e ? atoi(e) : 1; }
+        if (ivm_rows_fast > 0 && stride > row_bytes) {
+            size_t   block = (size_t)stride * (height - 1) + row_bytes;
+            uint8_t* tmp   = write ? g_malloc0(block) : g_malloc(block);
+            uint32_t y;
+            if (write) {
+                for (y = 0; y < height; y++) { memcpy(tmp + (size_t)y * stride, rows + (size_t)y * row_bytes, row_bytes); }
+                dma_memory_write(as, base, tmp, block, MEMTXATTRS_UNSPECIFIED);
+            }
+            else {
+                dma_memory_read(as, base, tmp, block, MEMTXATTRS_UNSPECIFIED);
+                for (y = 0; y < height; y++) { memcpy(rows + (size_t)y * row_bytes, tmp + (size_t)y * stride, row_bytes); }
+            }
+            g_free(tmp);
+            return;
+        }
+    }
+
+    for (uint32_t y = 0; y < height; y++) {
+        dma_addr_t addr = base + (dma_addr_t)y * stride;
+        uint8_t*   row  = rows + (size_t)y * row_bytes;
+        if (write) { dma_memory_write(as, addr, row, row_bytes, MEMTXATTRS_UNSPECIFIED); }
+        else {
+            dma_memory_read(as, addr, row, row_bytes, MEMTXATTRS_UNSPECIFIED);
+        }
+    }
+}"""
+sub(S, _ROWS_OLD, _ROWS_NEW)
+
+_PH_HEAD = """static void apple_scaler_process(AppleScalerState* scaler, const AppleScalerSurface* src, const AppleScalerSurface* dst)
+{
+    AppleScalerTransform transform = apple_scaler_transform(scaler);"""
+
+_PH_HEAD_NEW = """static int64_t  ivm_msr_ph[6];
+static uint32_t ivm_msr_n, ivm_msr_sw, ivm_msr_sh, ivm_msr_dw, ivm_msr_dh;
+static int64_t ivm_msr_now(void) { return g_get_monotonic_time(); }
+static void ivm_msr_add(int p, int64_t t0) { ivm_msr_ph[p] += ivm_msr_now() - t0; }
+static void ivm_msr_tick(void)
+{
+    if (++ivm_msr_n < 300) { return; }
+    fprintf(stderr, "[ivm-msr] phases us/job: load %lld rot %lld mir %lld scl %lld cvt %lld store %lld (%u jobs, last %ux%u -> %ux%u)\\n",
+            (long long)(ivm_msr_ph[0] / ivm_msr_n), (long long)(ivm_msr_ph[1] / ivm_msr_n), (long long)(ivm_msr_ph[2] / ivm_msr_n),
+            (long long)(ivm_msr_ph[3] / ivm_msr_n), (long long)(ivm_msr_ph[4] / ivm_msr_n), (long long)(ivm_msr_ph[5] / ivm_msr_n),
+            ivm_msr_n, ivm_msr_sw, ivm_msr_sh, ivm_msr_dw, ivm_msr_dh);
+    memset(ivm_msr_ph, 0, sizeof(ivm_msr_ph)); ivm_msr_n = 0;
+}
+
+static void apple_scaler_process(AppleScalerState* scaler, const AppleScalerSurface* src, const AppleScalerSurface* dst)
+{
+    int64_t ivm_t = ivm_msr_now();
+    ivm_msr_sw = src->width; ivm_msr_sh = src->height; ivm_msr_dw = dst->width; ivm_msr_dh = dst->height;
+    AppleScalerTransform transform = apple_scaler_transform(scaler);"""
+sub(S, _PH_HEAD, _PH_HEAD_NEW)
+
+sub(S, """    if (!apple_scaler_image_load(&image, &scaler->dma_as, src)) { return; }
+""",
+       """    if (!apple_scaler_image_load(&image, &scaler->dma_as, src)) { return; }
+    ivm_msr_add(0, ivm_t); ivm_t = ivm_msr_now();
+""")
+sub(S, """    if (transform.rotation != kRotate0) {
+        apple_scaler_image_rotate(&tmp, &image, transform.rotation);
+        apple_scaler_image_destroy(&image);
+        image = tmp;
+    }
+""",
+       """    if (transform.rotation != kRotate0) {
+        apple_scaler_image_rotate(&tmp, &image, transform.rotation);
+        apple_scaler_image_destroy(&image);
+        image = tmp;
+    }
+    ivm_msr_add(1, ivm_t); ivm_t = ivm_msr_now();
+""")
+sub(S, """    if (transform.flip_x || transform.flip_y) {
+        apple_scaler_image_mirror(&tmp, &image, transform.flip_x);
+        apple_scaler_image_destroy(&image);
+        image = tmp;
+    }
+""",
+       """    if (transform.flip_x || transform.flip_y) {
+        apple_scaler_image_mirror(&tmp, &image, transform.flip_x);
+        apple_scaler_image_destroy(&image);
+        image = tmp;
+    }
+    ivm_msr_add(2, ivm_t); ivm_t = ivm_msr_now();
+""")
+sub(S, """    if (image.width != dst->width || image.height != dst->height) {
+        apple_scaler_image_scale(&tmp, &image, dst->width, dst->height);
+        apple_scaler_image_destroy(&image);
+        image = tmp;
+    }
+""",
+       """    if (image.width != dst->width || image.height != dst->height) {
+        apple_scaler_image_scale(&tmp, &image, dst->width, dst->height);
+        apple_scaler_image_destroy(&image);
+        image = tmp;
+    }
+    ivm_msr_add(3, ivm_t); ivm_t = ivm_msr_now();
+""")
+sub(S, """    apple_scaler_image_store(&image, &scaler->dma_as, dst);
+    apple_scaler_image_destroy(&image);
+}""",
+       """    apple_scaler_image_store(&image, &scaler->dma_as, dst);
+    ivm_msr_add(5, ivm_t);
+    ivm_msr_tick();
+    apple_scaler_image_destroy(&image);
+}""")
+print("ispstub: msr fast ok")
