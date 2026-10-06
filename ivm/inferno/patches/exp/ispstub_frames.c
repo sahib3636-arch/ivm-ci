@@ -58,6 +58,7 @@ static void ivm_isp_out_config(uint32_t idx, const uint8_t* pk, uint32_t len)
 }
 static uint32_t   ivm_isp_sm_addr, ivm_isp_sm_state; /* 0 none, 1 requested, 2 ready */
 static uint32_t   ivm_isp_t2h_slot, ivm_isp_frames;
+static uint32_t   ivm_isp_p0n;      /* s40 4.0.41: primary-output fill phase, reset on every stream start */
 static bool       ivm_isp_streaming;
 static QEMUTimer* ivm_isp_ftimer;
 
@@ -717,9 +718,17 @@ static void ivm_isp_frame_tick(void* opaque)
             uint32_t id = ivm_isp_poolid[pool] - 1;
             if (id == 3) {
                 static int p0every = -1;
-                static uint32_t p0n;
                 if (p0every < 0) { const char* e = getenv("IVM_ISP_P0EVERY"); p0every = e ? MAX(1, atoi(e)) : 1; }
-                if (p0n++ % p0every == 0) {
+                /* s40 4.0.41: only thin out an EXTRA big output.  Several modes (Portrait, and the front
+                 * camera in some pipelines) configure a single preview: output 0 = 1504x1128 and no output 1.
+                 * Thinning that one feeds the guest unfilled (zero = green) buffers ~7 frames out of 8, i.e. a
+                 * green screen that flickers at ~2 fps.  When output 1 exists and is smaller, output 0 is the
+                 * Live/staging surface and the old behaviour (every Nth frame) is what we want. */
+                bool extra = ivm_isp_out_w[1] && ivm_isp_out_h[1] &&
+                             (uint64_t)ivm_isp_out_w[0] * ivm_isp_out_h[0] >
+                             (uint64_t)ivm_isp_out_w[1] * ivm_isp_out_h[1];
+                uint32_t n0 = ivm_isp_p0n++;
+                if (!extra || n0 % p0every == 0) {
                     ivm_isp_fill_yuv(&b, 0);
                 }
             } else if (id == 6) {
@@ -770,6 +779,9 @@ static void ivm_isp_stream(bool on)
     }
     ivm_isp_streaming = on;
     ivm_feed_publish(on);
+    if (on) {
+        ivm_isp_p0n = 0;   /* the first frame of every stream is always a real one (no green flash) */
+    }
     fprintf(stderr, "[ivm-isp] fw: stream %s\n", on ? "ON" : "OFF");
     if (on) {
         ivm_isp_sm_request();
