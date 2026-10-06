@@ -384,7 +384,28 @@ _ROWS_OLD = """static void apple_scaler_dma_rows(AddressSpace* as, dma_addr_t ba
     }
 }"""
 
-_ROWS_NEW = """static void apple_scaler_dma_rows(AddressSpace* as, dma_addr_t base, uint32_t stride, uint32_t row_bytes,
+_ROWS_NEW = """/* ivm s40: one address_space_write for a whole surface instead of one per row.  Every device write into guest RAM
+ * invalidates the TCG translations of the touched pages, so a 1504x1128 frame written row by row costs ~1700
+ * invalidation passes (measured: the ISP fill was 5.4 ms/frame in CI).  IVM_MSR_BATCH=0 restores it. */
+static int ivm_batch_on(void)
+{
+    static int on = -1;
+    if (on < 0) { const char* e = getenv("IVM_MSR_BATCH"); on = e ? atoi(e) : 1; }
+    return on;
+}
+static uint8_t* ivm_staging(size_t need)
+{
+    static uint8_t* buf;
+    static size_t   cap;
+    if (cap < need) {
+        g_free(buf);
+        buf = g_malloc0(need);      /* zero once: the row padding stays zero for the buffer's lifetime */
+        cap = need;
+    }
+    return buf;
+}
+
+static void apple_scaler_dma_rows(AddressSpace* as, dma_addr_t base, uint32_t stride, uint32_t row_bytes,
                                   uint32_t height, void* buf, bool write)
 {
     uint8_t* rows = buf;
@@ -426,6 +447,16 @@ _ROWS_NEW = """static void apple_scaler_dma_rows(AddressSpace* as, dma_addr_t ba
         else {
             dma_memory_read(as, base, rows, total, MEMTXATTRS_UNSPECIFIED);
         }
+        return;
+    }
+
+    if (write && ivm_batch_on()) {   /* ivm: pack the rows into a staging buffer and write the block in ONE call */
+        size_t    block = (size_t)stride * (height - 1) + row_bytes;
+        uint8_t*  stg   = ivm_staging(block);
+        for (uint32_t y = 0; y < height; y++) {
+            memcpy(stg + (size_t)y * stride, rows + (size_t)y * row_bytes, row_bytes);
+        }
+        dma_memory_write(as, base, stg, block, MEMTXATTRS_UNSPECIFIED);
         return;
     }
 
@@ -532,7 +563,7 @@ sub(A, r"""    if (dma_memory_read(dma_as, genpipe->state.data_start, genpipe->s
        r"""    {   /* ivm: map + memcpy instead of one IOMMU page walk per 4K page (see apple_scaler_dma_rows);
          * IVM_MSR_MAP=0 restores dma_memory_read */
         static int ivm_map_gp = -1;
-        if (ivm_map_gp < 0) { const char* e = getenv("IVM_MSR_MAP"); ivm_map_gp = e ? atoi(e) : 1; }
+        if (ivm_map_gp < 0) { const char* e = getenv("IVM_MSR_MAP"); ivm_map_gp = e ? atoi(e) : 0; }
         if (ivm_map_gp > 0) {
             hwaddr plen = len;
             void*  p    = address_space_map(dma_as, genpipe->state.data_start, &plen, false, MEMTXATTRS_UNSPECIFIED);
