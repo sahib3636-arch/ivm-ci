@@ -337,35 +337,97 @@ static void ivm_src_fill8(const IvmSrc* src, uint32_t y0, uint32_t y1, uint32_t 
         row = g_malloc(8192);
         xm  = g_malloc(8192 * sizeof(uint32_t));
     }
-    ivm_src_map(src, w, h, xm, &cy, &chh);
-    for (y = 0; y < h; y++) {
-        uint32_t r = ivm_src_row(src, cy, chh, y, h);
-        if (r != last) {   /* upscaling repeats source rows: gather once */
-            const uint8_t* sp = src->p + (size_t)r * sw;
-            for (x = 0; x < w; x++) {
-                row[x] = ly[sp[xm[x]]];
+    /* s40: map the plane once and write the rows straight into guest RAM (the old path issued one
+     * address_space_write per row = one DART page-table walk each).  IVM_ISP_MAP=0 restores it. */
+    {
+        static int  ivm_isp_map = -1;
+        hwaddr      want, plen;
+        uint8_t*    dst;
+        if (ivm_isp_map < 0) { const char* e = getenv("IVM_ISP_MAP"); ivm_isp_map = e ? atoi(e) : 1; }
+        want = (hwaddr)s0 * (h - 1) + w;
+        plen = want;
+        dst  = ivm_isp_map > 0 ? address_space_map(&ivm_isp_dma_as, y0, &plen, true, MEMTXATTRS_UNSPECIFIED) : NULL;
+        if (dst && plen >= want) {
+            for (y = 0; y < h; y++) {
+                uint32_t r = ivm_src_row(src, cy, chh, y, h);
+                if (r == last) {
+                    memcpy(dst + (size_t)y * s0, dst + (size_t)(y - 1) * s0, w);
+                    continue;
+                }
+                {
+                    const uint8_t* sp = src->p + (size_t)r * sw;
+                    uint8_t*       dp = dst + (size_t)y * s0;
+                    for (x = 0; x < w; x++) { dp[x] = ly[sp[xm[x]]]; }
+                }
+                last = r;
             }
-            last = r;
+            address_space_unmap(&ivm_isp_dma_as, dst, plen, true, want);
         }
-        address_space_write(&ivm_isp_dma_as, y0 + y * s0, MEMTXATTRS_UNSPECIFIED, row, w);
+        else {
+            if (dst) { address_space_unmap(&ivm_isp_dma_as, dst, plen, true, 0); }
+            for (y = 0; y < h; y++) {
+                uint32_t r = ivm_src_row(src, cy, chh, y, h);
+                if (r != last) {   /* upscaling repeats source rows: gather once */
+                    const uint8_t* sp = src->p + (size_t)r * sw;
+                    for (x = 0; x < w; x++) {
+                        row[x] = ly[sp[xm[x]]];
+                    }
+                    last = r;
+                }
+                address_space_write(&ivm_isp_dma_as, y0 + y * s0, MEMTXATTRS_UNSPECIFIED, row, w);
+            }
+        }
     }
     if (!y1) {
         return;
     }
-    const uint8_t* uvb = src->p + (size_t)sw * sh;
-    last = UINT32_MAX;
-    for (y = 0; y < h / 2; y++) {
-        uint32_t r = ivm_src_row(src, cy, chh, y * 2, h) / 2;
-        if (r != last) {
-            const uint8_t* sp = uvb + (size_t)r * sw;
-            for (x = 0; x + 1 < w; x += 2) {
-                uint32_t sx = xm[x] & ~1u;
-                row[x]     = lu[sp[sx]];
-                row[x + 1] = lv[sp[sx + 1]];
+    {
+        const uint8_t* uvb = src->p + (size_t)sw * sh;
+        static int     ivm_isp_mapc = -1;
+        hwaddr         want, plen;
+        uint8_t*       dst;
+        uint32_t       wb = w & ~1u;
+        if (ivm_isp_mapc < 0) { const char* e = getenv("IVM_ISP_MAP"); ivm_isp_mapc = e ? atoi(e) : 1; }
+        last = UINT32_MAX;
+        want = (hwaddr)s1 * (h / 2 - 1) + wb;
+        plen = want;
+        dst  = ivm_isp_mapc > 0 ? address_space_map(&ivm_isp_dma_as, y1, &plen, true, MEMTXATTRS_UNSPECIFIED) : NULL;
+        if (dst && plen >= want) {
+            for (y = 0; y < h / 2; y++) {
+                uint32_t r = ivm_src_row(src, cy, chh, y * 2, h) / 2;
+                if (r == last) {
+                    memcpy(dst + (size_t)y * s1, dst + (size_t)(y - 1) * s1, wb);
+                    continue;
+                }
+                {
+                    const uint8_t* sp = uvb + (size_t)r * sw;
+                    uint8_t*       dp = dst + (size_t)y * s1;
+                    for (x = 0; x + 1 < w; x += 2) {
+                        uint32_t sx = xm[x] & ~1u;
+                        dp[x]     = lu[sp[sx]];
+                        dp[x + 1] = lv[sp[sx + 1]];
+                    }
+                }
+                last = r;
             }
-            last = r;
+            address_space_unmap(&ivm_isp_dma_as, dst, plen, true, want);
         }
-        address_space_write(&ivm_isp_dma_as, y1 + y * s1, MEMTXATTRS_UNSPECIFIED, row, w & ~1u);
+        else {
+            if (dst) { address_space_unmap(&ivm_isp_dma_as, dst, plen, true, 0); }
+            for (y = 0; y < h / 2; y++) {
+                uint32_t r = ivm_src_row(src, cy, chh, y * 2, h) / 2;
+                if (r != last) {
+                    const uint8_t* sp = uvb + (size_t)r * sw;
+                    for (x = 0; x + 1 < w; x += 2) {
+                        uint32_t sx = xm[x] & ~1u;
+                        row[x]     = lu[sp[sx]];
+                        row[x + 1] = lv[sp[sx + 1]];
+                    }
+                    last = r;
+                }
+                address_space_write(&ivm_isp_dma_as, y1 + y * s1, MEMTXATTRS_UNSPECIFIED, row, wb);
+            }
+        }
     }
 }
 static void ivm_feed_fill(uint32_t y0, uint32_t y1, uint32_t w, uint32_t h, uint32_t s0, uint32_t s1)
