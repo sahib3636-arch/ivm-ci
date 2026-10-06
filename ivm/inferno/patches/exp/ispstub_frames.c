@@ -218,7 +218,9 @@ static void ivm_feed_testframe(uint32_t phase)
     for (y = 0; y < h; y++) {
         for (x = 0; x < w; x++) {
             int dx = (int)x - 320, dy = (int)y - 240;
-            Y[y * w + x] = (uint8_t)(((((dx * dx + dy * dy) / 400) + phase) & 1) ? 230 : 40);
+            /* rings + bars that slide 1 px per tick, so the picture differs after one tick AND after the
+             * P0EVERY=8 ticks between two fills of the big output (a plain 0/1 toggle looked frozen). */
+            Y[y * w + x] = (uint8_t)(((((dx * dx + dy * dy) / 400) + ((x + (int)phase) / 80)) & 1) ? 230 : 40);
         }
     }
     for (y = 0; y < h / 2; y++) {
@@ -242,7 +244,7 @@ static void ivm_feed_publish(bool on)
         return;
     }
     if (on && getenv("IVM_ISP_FEED_TEST")) {
-        ivm_feed_testframe(++ivm_feed_phase & 1);
+        ivm_feed_testframe(++ivm_feed_phase);
     }
     qatomic_set((uint32_t*)(ivm_feed + 8), on ? ivm_isp_cur_chan + 1 : 0);
     qatomic_set((uint32_t*)(ivm_feed + 12), qatomic_read((uint32_t*)(ivm_feed + 12)) + 1);
