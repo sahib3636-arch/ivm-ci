@@ -346,8 +346,9 @@ static void ivm_src_fill8(const IvmSrc* src, uint32_t y0, uint32_t y1, uint32_t 
         if (ivm_isp_map < 0) { const char* e = getenv("IVM_ISP_MAP"); ivm_isp_map = e ? atoi(e) : 1; }
         want = (hwaddr)s0 * (h - 1) + w;
         plen = want;
-        dst  = ivm_isp_map > 0 ? address_space_map(&ivm_isp_dma_as, y0, &plen, true, MEMTXATTRS_UNSPECIFIED) : NULL;
-        if (dst && plen >= want) {
+        dst  = ivm_isp_map > 0 ? ivm_isp_staging(want) : NULL;
+        if (dst) {
+            plen = want;
             for (y = 0; y < h; y++) {
                 uint32_t r = ivm_src_row(src, cy, chh, y, h);
                 if (r == last) {
@@ -361,10 +362,9 @@ static void ivm_src_fill8(const IvmSrc* src, uint32_t y0, uint32_t y1, uint32_t 
                 }
                 last = r;
             }
-            address_space_unmap(&ivm_isp_dma_as, dst, plen, true, want);
+            address_space_write(&ivm_isp_dma_as, y0, MEMTXATTRS_UNSPECIFIED, dst, want);
         }
         else {
-            if (dst) { address_space_unmap(&ivm_isp_dma_as, dst, plen, true, 0); }
             for (y = 0; y < h; y++) {
                 uint32_t r = ivm_src_row(src, cy, chh, y, h);
                 if (r != last) {   /* upscaling repeats source rows: gather once */
@@ -391,8 +391,9 @@ static void ivm_src_fill8(const IvmSrc* src, uint32_t y0, uint32_t y1, uint32_t 
         last = UINT32_MAX;
         want = (hwaddr)s1 * (h / 2 - 1) + wb;
         plen = want;
-        dst  = ivm_isp_mapc > 0 ? address_space_map(&ivm_isp_dma_as, y1, &plen, true, MEMTXATTRS_UNSPECIFIED) : NULL;
-        if (dst && plen >= want) {
+        dst  = ivm_isp_mapc > 0 ? ivm_isp_staging(want) : NULL;
+        if (dst) {
+            plen = want;
             for (y = 0; y < h / 2; y++) {
                 uint32_t r = ivm_src_row(src, cy, chh, y * 2, h) / 2;
                 if (r == last) {
@@ -410,10 +411,9 @@ static void ivm_src_fill8(const IvmSrc* src, uint32_t y0, uint32_t y1, uint32_t 
                 }
                 last = r;
             }
-            address_space_unmap(&ivm_isp_dma_as, dst, plen, true, want);
+            address_space_write(&ivm_isp_dma_as, y1, MEMTXATTRS_UNSPECIFIED, dst, want);
         }
         else {
-            if (dst) { address_space_unmap(&ivm_isp_dma_as, dst, plen, true, 0); }
             for (y = 0; y < h / 2; y++) {
                 uint32_t r = ivm_src_row(src, cy, chh, y * 2, h) / 2;
                 if (r != last) {
@@ -434,6 +434,22 @@ static void ivm_feed_fill(uint32_t y0, uint32_t y1, uint32_t w, uint32_t h, uint
 {
     IvmSrc src = ivm_src_feed();
     ivm_src_fill8(&src, y0, y1, w, h, s0, s1);
+}
+
+/* s40: one address_space_write for a whole plane instead of one per row (each device write invalidates the TCG
+ * translations of the touched pages -> ~1700 invalidation passes per frame).  IVM_ISP_BATCH=0 restores it. */
+static int ivm_isp_batch(void)
+{
+    static int on = -1;
+    if (on < 0) { const char* e = getenv("IVM_ISP_BATCH"); on = e ? atoi(e) : 1; }
+    return on;
+}
+static uint8_t* ivm_isp_staging(size_t need)
+{
+    static uint8_t* buf;
+    static size_t   cap;
+    if (cap < need) { g_free(buf); buf = g_malloc0(need); cap = need; }
+    return buf;
 }
 
 /* synthetic picture into a 420 bi-planar buffer: luma ramp + moving bars, chroma colour bands */
