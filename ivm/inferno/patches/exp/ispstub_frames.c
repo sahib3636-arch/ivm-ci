@@ -160,6 +160,7 @@ static void ivm_isp_sm_poll(void)
 #define IVM_FEED_MAXH 1440u
 #define IVM_FEED_SIZE (IVM_FEED_HDR + IVM_FEED_MAXW * IVM_FEED_MAXH * 3u / 2u)
 static uint32_t ivm_isp_cur_chan;
+static void     ivm_feed_testframe(uint32_t phase);   /* CI self-test feed (defined below ivm_feed_open) */
 static uint8_t* ivm_feed;
 static int      ivm_feed_state;   /* 0 untried, 1 mapped, -1 off */
 static uint8_t* ivm_feed_copy;    /* stable snapshot of the newest frame */
@@ -197,39 +198,51 @@ static void ivm_feed_open(void)
     ivm_feed_state = 1;
     fprintf(stderr, "[ivm-isp] feed: mapped %s (%u bytes)\n", path, IVM_FEED_SIZE);
     if (getenv("IVM_ISP_FEED_TEST")) {
-        /* act as the app once: 640x480 frame, concentric rings + quadrant colours, so the path is testable in CI */
-        uint32_t w = 640, h = 480, x, y;
-        uint8_t* Y = ivm_feed + IVM_FEED_HDR, *UV = Y + w * h;
-        stl_le_p(ivm_feed + 16, 1);
-        for (y = 0; y < h; y++) {
-            for (x = 0; x < w; x++) {
-                int dx = (int)x - 320, dy = (int)y - 240;
-                Y[y * w + x] = (uint8_t)(((dx * dx + dy * dy) / 400) & 1 ? 230 : 40);
-            }
-        }
-        for (y = 0; y < h / 2; y++) {
-            for (x = 0; x < w / 2; x++) {
-                UV[y * w + 2 * x]     = x < w / 4 ? 60 : 200;
-                UV[y * w + 2 * x + 1] = y < h / 4 ? 200 : 60;
-            }
-        }
-        stl_le_p(ivm_feed + 20, w);
-        stl_le_p(ivm_feed + 24, h);
-        stl_le_p(ivm_feed + 28, 0);
-        smp_wmb();
-        stl_le_p(ivm_feed + 16, 2);
+        ivm_feed_testframe(0);
         fprintf(stderr, "[ivm-isp] feed: test frame written\n");
     }
+}
+
+/* CI self-test feed: 640x480 rings + quadrant colours.  s40 4.0.43: the ring phase moves every tick, because a
+ * static frame makes the viewfinder look frozen and hides exactly the bug that shipped in 4.0.42 (every preview
+ * pixel sampled source pixel 0 / one repeated row -> a flat, blank viewfinder).  With this, the mirror-symmetry
+ * of the screenshot tells you whether ivm_src_fill8 mapped the source correctly. */
+static void ivm_feed_testframe(uint32_t phase)
+{
+    uint32_t w = 640, h = 480, x, y;
+    uint8_t* Y  = ivm_feed + IVM_FEED_HDR;
+    uint8_t* UV = Y + w * h;
+    stl_le_p(ivm_feed + 20, w);
+    stl_le_p(ivm_feed + 24, h);
+    stl_le_p(ivm_feed + 28, 0);
+    for (y = 0; y < h; y++) {
+        for (x = 0; x < w; x++) {
+            int dx = (int)x - 320, dy = (int)y - 240;
+            Y[y * w + x] = (uint8_t)(((((dx * dx + dy * dy) / 400) + phase) & 1) ? 230 : 40);
+        }
+    }
+    for (y = 0; y < h / 2; y++) {
+        for (x = 0; x < w / 2; x++) {
+            UV[y * w + 2 * x]     = x < w / 4 ? 60 : 200;
+            UV[y * w + 2 * x + 1] = y < h / 4 ? 200 : 60;
+        }
+    }
+    smp_wmb();
+    stl_le_p(ivm_feed + 16, 2u + 2u * phase);
 }
 
 /* publish stream state; called on stream on/off and every frame */
 static void ivm_feed_publish(bool on)
 {
+    static uint32_t ivm_feed_phase;
     if (ivm_feed_state == 0) {
         ivm_feed_open();
     }
     if (ivm_feed_state != 1) {
         return;
+    }
+    if (on && getenv("IVM_ISP_FEED_TEST")) {
+        ivm_feed_testframe(++ivm_feed_phase & 1);
     }
     qatomic_set((uint32_t*)(ivm_feed + 8), on ? ivm_isp_cur_chan + 1 : 0);
     qatomic_set((uint32_t*)(ivm_feed + 12), qatomic_read((uint32_t*)(ivm_feed + 12)) + 1);
