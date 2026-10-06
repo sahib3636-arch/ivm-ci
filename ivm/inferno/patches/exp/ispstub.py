@@ -391,6 +391,35 @@ _ROWS_NEW = """static void apple_scaler_dma_rows(AddressSpace* as, dma_addr_t ba
 
     if (row_bytes == 0 || height == 0) { return; }
 
+    {   /* ivm: map the whole strided block once (address_space_map -> host pointer) and memcpy the rows.
+         * The old path called dma_memory_read/write once per row when stride > row_bytes: one DART page-table
+         * walk + RCU read lock per row (~1700 of them for a 1504x1128 surface).  Measured ph27: load 1200 us
+         * + store 1540 us of a 4182 us job.  IVM_MSR_MAP=0 restores the old path. */
+        static int ivm_map_rows = -1;
+        if (ivm_map_rows < 0) { const char* e = getenv("IVM_MSR_MAP"); ivm_map_rows = e ? atoi(e) : 1; }
+        if (ivm_map_rows > 0) {
+            hwaddr want = (hwaddr)stride * (height - 1) + row_bytes;
+            hwaddr plen = want;
+            void*  p    = address_space_map(as, base, &plen, write, MEMTXATTRS_UNSPECIFIED);
+            if (p && plen >= want) {
+                uint32_t y;
+                if (stride == row_bytes) {
+                    if (write) { memcpy(p, rows, (size_t)want); }
+                    else { memcpy(rows, p, (size_t)want); }
+                }
+                else if (write) {
+                    for (y = 0; y < height; y++) { memcpy((uint8_t*)p + (size_t)y * stride, rows + (size_t)y * row_bytes, row_bytes); }
+                }
+                else {
+                    for (y = 0; y < height; y++) { memcpy(rows + (size_t)y * row_bytes, (uint8_t*)p + (size_t)y * stride, row_bytes); }
+                }
+                address_space_unmap(as, p, plen, write, want);   /* marks the range dirty when writing */
+                return;
+            }
+            if (p) { address_space_unmap(as, p, plen, write, 0); }
+        }
+    }
+
     if (stride == row_bytes) {
         size_t total = (size_t)row_bytes * height;
         if (write) { dma_memory_write(as, base, rows, total, MEMTXATTRS_UNSPECIFIED); }
@@ -398,27 +427,6 @@ _ROWS_NEW = """static void apple_scaler_dma_rows(AddressSpace* as, dma_addr_t ba
             dma_memory_read(as, base, rows, total, MEMTXATTRS_UNSPECIFIED);
         }
         return;
-    }
-
-    {   /* ivm: one IOMMU walk over the whole strided block instead of one per row (the padding between rows
-         * belongs to the surface; the padding after the last row is never touched) */
-        static int ivm_rows_fast = -1;
-        if (ivm_rows_fast < 0) { const char* e = getenv("IVM_MSR_ROWS"); ivm_rows_fast = e ? atoi(e) : 1; }
-        if (ivm_rows_fast > 0 && stride > row_bytes) {
-            size_t   block = (size_t)stride * (height - 1) + row_bytes;
-            uint8_t* tmp   = write ? g_malloc0(block) : g_malloc(block);
-            uint32_t y;
-            if (write) {
-                for (y = 0; y < height; y++) { memcpy(tmp + (size_t)y * stride, rows + (size_t)y * row_bytes, row_bytes); }
-                dma_memory_write(as, base, tmp, block, MEMTXATTRS_UNSPECIFIED);
-            }
-            else {
-                dma_memory_read(as, base, tmp, block, MEMTXATTRS_UNSPECIFIED);
-                for (y = 0; y < height; y++) { memcpy(rows + (size_t)y * row_bytes, tmp + (size_t)y * stride, row_bytes); }
-            }
-            g_free(tmp);
-            return;
-        }
     }
 
     for (uint32_t y = 0; y < height; y++) {
@@ -510,3 +518,39 @@ sub(S, """    apple_scaler_image_store(&image, &scaler->dma_as, dst);
     apple_scaler_image_destroy(&image);
 }""")
 print("ispstub: msr fast ok")
+
+
+# s40: adp_v4_gp_read also goes through address_space_map (one host memcpy instead of one IOMMU walk per page)
+sub(A, r"""    if (dma_memory_read(dma_as, genpipe->state.data_start, genpipe->state.buf, len, MEMTXATTRS_UNSPECIFIED) == MEMTX_OK)
+    {
+        genpipe->state.buf_len = len;
+    }
+    else {
+        qemu_log_mask(LOG_GUEST_ERROR, "gp%d: failed to read from DMA.\n", genpipe->index);
+    }
+""",
+       r"""    {   /* ivm: map + memcpy instead of one IOMMU page walk per 4K page (see apple_scaler_dma_rows);
+         * IVM_MSR_MAP=0 restores dma_memory_read */
+        static int ivm_map_gp = -1;
+        if (ivm_map_gp < 0) { const char* e = getenv("IVM_MSR_MAP"); ivm_map_gp = e ? atoi(e) : 1; }
+        if (ivm_map_gp > 0) {
+            hwaddr plen = len;
+            void*  p    = address_space_map(dma_as, genpipe->state.data_start, &plen, false, MEMTXATTRS_UNSPECIFIED);
+            if (p && plen >= len) {
+                memcpy(genpipe->state.buf, p, len);
+                address_space_unmap(dma_as, p, plen, false, len);
+                genpipe->state.buf_len = len;
+                return;
+            }
+            if (p) { address_space_unmap(dma_as, p, plen, false, 0); }
+        }
+    }
+    if (dma_memory_read(dma_as, genpipe->state.data_start, genpipe->state.buf, len, MEMTXATTRS_UNSPECIFIED) == MEMTX_OK)
+    {
+        genpipe->state.buf_len = len;
+    }
+    else {
+        qemu_log_mask(LOG_GUEST_ERROR, "gp%d: failed to read from DMA.\n", genpipe->index);
+    }
+""")
+print("ispstub: map read ok")
