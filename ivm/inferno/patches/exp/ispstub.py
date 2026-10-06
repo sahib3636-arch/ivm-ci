@@ -273,6 +273,34 @@ sub(A, "static void adp_v4_gp_draw(ADPV4GenPipe* genpipe, AddressSpace* dma_as, 
        "static void adp_v4_gp_draw(ADPV4GenPipe* genpipe, AddressSpace* dma_as, pixman_image_t* disp_image,\n                           QemuConsole* console)\n{\n")
 sub(A, "        pixman_image_composite(PIXMAN_OP_SRC, image, NULL, disp_image, 0, 0, 0, 0, 0, 0, genpipe->state.dest_width,\n",
        "        pixman_image_composite((ivm_adp_drawn++ && !getenv(\"IVM_ADP_SRC\")) ? PIXMAN_OP_OVER : PIXMAN_OP_SRC, image, NULL, disp_image, 0, 0, 0, 0, 0, 0, genpipe->state.dest_width,\n")
+# s40 4.0.43: adp_v4_gp_fmt_to_pixman() returns 0 for a layer format it does not know (e.g. the YUV / 10-bit surface
+# iOS uses for a video preview).  pixman_image_create_bits(format 0, ...) builds an image whose implementation is
+# NULL and the following pixman_image_composite calls it -> host SIGSEGV at pc 0, which killed the whole engine the
+# moment the Camera app switched to VIDEO mode.  Skip that layer (and say so) instead of building it.
+sub(A, "        image = genpipe->state.image;\n"
+       "        if (image == NULL) {\n"
+       "            fmt                  = adp_v4_gp_fmt_to_pixman(genpipe);\n"
+       "            genpipe->state.image = image =\n"
+       "                pixman_image_create_bits(fmt, genpipe->state.src_width, genpipe->state.src_height,\n"
+       "                                         (uint32_t*)genpipe->state.buf, genpipe->state.stride);\n"
+       "        }\n",
+       "        image = genpipe->state.image;\n"
+       "        fmt = image ? pixman_image_get_format(image) : 0;\n"
+       "        if (image == NULL) {\n"
+       "            fmt = adp_v4_gp_fmt_to_pixman(genpipe);\n"
+       "            if (fmt == 0) {\n"
+       "                static int ivm_badfmt;\n"
+       "                if (ivm_badfmt++ < 8) {\n"
+       "                    fprintf(stderr, \"[ivm-adp] gp%d: skip layer, pixel_format 0x%x has no pixman format (%ux%u)\\n\",\n"
+       "                            genpipe->index, genpipe->state.pixel_format, genpipe->state.src_width, genpipe->state.src_height);\n"
+       "                }\n"
+       "                return;\n"
+       "            }\n"
+       "            genpipe->state.image = image =\n"
+       "                pixman_image_create_bits(fmt, genpipe->state.src_width, genpipe->state.src_height,\n"
+       "                                         (uint32_t*)genpipe->state.buf, genpipe->state.stride);\n"
+       "        }\n"
+       "        if (fmt == 0) { return; }\n")
 sub(A, "    for (i = 0; i < ADP_V4_GP_COUNT; ++i) { adp_v4_gp_draw(&adp->genpipe[i], &adp->dma_as, disp_image, adp->console); }\n",
        "    ivm_adp_drawn = 0;\n"
        "    {\n        static int ivm_adp_rev = -1, ivm_adp_log = -1;\n"
