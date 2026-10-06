@@ -353,6 +353,9 @@ static void ivm_src_fill8(const IvmSrc* src, uint32_t y0, uint32_t y1, uint32_t 
         row = g_malloc(8192);
         xm  = g_malloc(8192 * sizeof(uint32_t));
     }
+    /* 4.0.43: this call was dropped when the plane-at-once write went in (ivm-ci 136b82a) -> xm[], cy, chh
+     * were uninitialised and every output pixel sampled source pixel 0: a flat, blank viewfinder. */
+    ivm_src_map(src, w, h, xm, &cy, &chh);
     /* s40: map the plane once and write the rows straight into guest RAM (the old path issued one
      * address_space_write per row = one DART page-table walk each).  IVM_ISP_MAP=0 restores it. */
     {
