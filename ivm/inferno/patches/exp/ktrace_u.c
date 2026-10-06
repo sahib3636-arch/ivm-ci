@@ -503,19 +503,19 @@ void HELPER(ivm_uskip)(CPUARMState* env, uint64_t pc)
     cpu_loop_exit(env_cpu(env));
 }
 
-/* ---- IVM_USET=<pc>:<reg>=<hex val>[,...] (unslid dsc addresses, max 24): before the instruction at pc
+/* ---- IVM_USET=<pc>:<reg>=<hex val>[,...] (unslid dsc addresses, max 64): before the instruction at pc
  * executes, set x<reg> = val.  s39: force CMPhoto option reads, e.g. JPEGSoftwareEncode in
  * FigPhotoJPEGEncoder (MediaToolbox 0x18c250eb0: w0 = option value -> 1) since the VM has no AppleJPEG HW. */
 int             ivm_uset_n;
-uint64_t        ivm_uset_pc[24];
-static uint32_t ivm_uset_reg[24];
-static uint64_t ivm_uset_val[24];
-static int      ivm_uset_cond[24];
+uint64_t        ivm_uset_pc[64];
+static uint32_t ivm_uset_reg[64];
+static uint64_t ivm_uset_val[64];
+static int      ivm_uset_cond[64];
 static long     ivm_uset_hits;
 static void __attribute__((constructor)) ivm_uset_init(void)
 {
     const char* e = getenv("IVM_USET");
-    while (e && *e && ivm_uset_n < 24) {
+    while (e && *e && ivm_uset_n < 64) {
         char* end;
         ivm_uset_pc[ivm_uset_n] = strtoull(e, &end, 16);
         if (*end != ':') {
@@ -541,7 +541,7 @@ void HELPER(ivm_uset)(CPUARMState* env, uint64_t pc)
     for (k = 0; k < ivm_uset_n; k++) {
         if (ivm_uset_pc[k] + ivm_dsc_slide == pc && (ivm_uset_reg[k] < 31 || ivm_uset_reg[k] >= 32) &&
             (ivm_uset_cond[k] < 0 || (ivm_uset_cond[k] < 31 && !env->xregs[ivm_uset_cond[k]]))) {
-            static long per[24];
+            static long per[64];
             ivm_uset_hits++;
             if (ivm_uset_reg[k] == 32) {   /* s40: "pc:32=<target>/<zreg>" = branch to <target> instead of running
                                             * the instruction at pc, when x[zreg] == 0.  For calls that abort on a
