@@ -323,6 +323,22 @@ static inline uint32_t ivm_src_row(const IvmSrc* src, uint32_t cy, uint32_t chh,
 }
 
 /* nearest-neighbour scale of [src] into an 8-bit 420 bi-planar ISP buffer */
+/* s40: one address_space_write for a whole plane instead of one per row (each device write invalidates the TCG
+ * translations of the touched pages -> ~1700 invalidation passes per frame).  IVM_ISP_BATCH=0 restores it. */
+static int ivm_isp_batch(void)
+{
+    static int on = -1;
+    if (on < 0) { const char* e = getenv("IVM_ISP_BATCH"); on = e ? atoi(e) : 1; }
+    return on;
+}
+static uint8_t* ivm_isp_staging(size_t need)
+{
+    static uint8_t* buf;
+    static size_t   cap;
+    if (cap < need) { g_free(buf); buf = g_malloc0(need); cap = need; }
+    return buf;
+}
+
 static void ivm_src_fill8(const IvmSrc* src, uint32_t y0, uint32_t y1, uint32_t w, uint32_t h, uint32_t s0, uint32_t s1)
 {
     static uint8_t*  row;
@@ -434,22 +450,6 @@ static void ivm_feed_fill(uint32_t y0, uint32_t y1, uint32_t w, uint32_t h, uint
 {
     IvmSrc src = ivm_src_feed();
     ivm_src_fill8(&src, y0, y1, w, h, s0, s1);
-}
-
-/* s40: one address_space_write for a whole plane instead of one per row (each device write invalidates the TCG
- * translations of the touched pages -> ~1700 invalidation passes per frame).  IVM_ISP_BATCH=0 restores it. */
-static int ivm_isp_batch(void)
-{
-    static int on = -1;
-    if (on < 0) { const char* e = getenv("IVM_ISP_BATCH"); on = e ? atoi(e) : 1; }
-    return on;
-}
-static uint8_t* ivm_isp_staging(size_t need)
-{
-    static uint8_t* buf;
-    static size_t   cap;
-    if (cap < need) { g_free(buf); buf = g_malloc0(need); cap = need; }
-    return buf;
 }
 
 /* synthetic picture into a 420 bi-planar buffer: luma ramp + moving bars, chroma colour bands */
