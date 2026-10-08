@@ -46,7 +46,8 @@ jobs:
               if '.part' in a['name'] or a['name'].endswith('.md5'):
                   print(f\"Downloading {a['name']}\")
                   req=urllib.request.Request(f\"https://api.github.com/repos/sahib3636-arch/ivm/releases/assets/{a['id']}\", headers={'Authorization': f'Bearer {tok}', 'Accept': 'application/octet-stream'})
-                  urllib.request.urlretrieve(req, f\"/tmp/{a['name']}\")
+                  with urllib.request.urlopen(req) as r, open(f\"/tmp/{a['name']}\", 'wb') as f:
+                      f.write(r.read())
           "
           # Reassemble and extract
           cat /tmp/*.part* > /tmp/diskset.tar.zst
