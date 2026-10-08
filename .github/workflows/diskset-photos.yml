@@ -13,7 +13,7 @@ jobs:
         with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
       - name: Generate test photos
         run: |
-          pip3 install pillow
+          pip3 install --break-system-packages pillow
           python3 -c "
           from PIL import Image
           import os
