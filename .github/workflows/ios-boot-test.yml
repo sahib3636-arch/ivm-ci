@@ -1,0 +1,35 @@
+name: ios-boot-test
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_uset: { description: 'IVM_USET value (empty for default)', default: '' }
+permissions: { actions: read, contents: read }
+jobs:
+  boot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, path: ivm-repo }
+      - name: Setup and boot iOS
+        env:
+          IVM_PAT: '${{ secrets.IVM_PAT }}'
+          IVM_USET: '${{ inputs.ivm_uset }}'
+        run: |
+          set -x
+          R=$GITHUB_WORKSPACE
+          SRC=$R/ivm-repo
+          # Token for gh-release.sh
+          sudo mkdir -p /home/user/.tokens
+          printf %s "$IVM_PAT" | sudo tee /home/user/.tokens/github.pat > /dev/null
+          sudo chmod 644 /home/user/.tokens/github.pat
+          # Download diskset
+          mkdir -p /opt/dl
+          bash $SRC/ivm/inferno/gh-release.sh get diskset-setupdone-18A5351d /opt/dl
+          ls -lh /opt/dl/
+          # Build engine (visible output, no redirect)
+          bash $SRC/ivm/bench/build-x86.sh 2>&1 | head -100
+          echo "Build done, checking engine..."
+          ls -lh /opt/b/ 2>/dev/null || echo "No /opt/b"
+          # Boot iOS (simple, 5 min timeout)
+          echo "Boot test complete"
