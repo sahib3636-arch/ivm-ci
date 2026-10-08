@@ -23,7 +23,7 @@ jobs:
           which bash zstd tar jq || echo "Missing commands!"
           
           sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build meson pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev libzstd-dev libpng-dev libjpeg-dev nettle-dev libgmp-dev liblzfse-dev libtasn1-6-dev zlib1g-dev liblz4-dev cmake procps
-          mkdir -p $R/.tokens; printf %s "$IVM_PAT" > $R/.tokens/github.pat; chmod 600 $R/.tokens/github.pat
+          mkdir -p /home/user/.tokens; printf %s "$IVM_PAT" > /home/user/.tokens/github.pat; chmod 600 /home/user/.tokens/github.pat
           # Download diskset
           bash $R/ivm-repo/ivm/inferno/gh-release.sh get diskset-setupdone-18A5351d /opt/dl > $O/download.log 2>&1
           zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS && rm -rf /opt/dl
