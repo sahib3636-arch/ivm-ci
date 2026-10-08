@@ -19,10 +19,13 @@ jobs:
           IVM_PAT: '${{ secrets.IVM_PAT }}'
           IVM_USET: '${{ inputs.ivm_uset }}'
         run: |
+          # boot-out must live on the runner (not inside the container) so the artifact step can see it
+          mkdir -p "$GITHUB_WORKSPACE/boot-out"
           # Run everything in debian:trixie like bench-ci.sh does
           docker run --rm \
             -e IVM_PAT -e IVM_USET \
             -v "$GITHUB_WORKSPACE/ivm-repo":/home/user/ivm-repo \
+            -v "$GITHUB_WORKSPACE/boot-out":/tmp/boot-out \
             -v /mnt:/opt \
             debian:trixie bash -c '
             set -x
@@ -52,8 +55,14 @@ jobs:
             echo "=== Booting iOS ==="
             timeout 300 python3 -u $SRC/ivm/bench/bench.py /opt/b/eng /opt/qd "$VMD" "$O" "boot-test" "4" "3G" "512" 2>&1 | tee $O/boot.log | tail -50
             echo "=== Boot done ==="
-            grep -i "springboard" $O/boot.log | head -5 || echo "No SpringBoard in log"
+            # success = iOS actually reached the home screen (bench.py detects it via VNC)
+            if grep -q "home settled" $O/boot.log; then
+              echo "BOOT_OK: iOS reached the home screen"
+            else
+              echo "BOOT_FAIL: home screen not detected in boot.log"
+              exit 1
+            fi
             '
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: ios-boot-results, path: /tmp/boot-out/ }
+        with: { name: ios-boot-results, path: boot-out/ }
