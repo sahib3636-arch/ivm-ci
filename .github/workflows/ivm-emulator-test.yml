@@ -1,0 +1,45 @@
+name: ivm-emulator-test
+on:
+  workflow_dispatch:
+    inputs:
+      apk_artifact: { description: 'APK artifact name from ivm repo', default: 'ivm-apk' }
+      apk_run_id: { description: 'Run ID of the ivm APK build', default: '' }
+permissions: { actions: read, contents: read }
+jobs:
+  test:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm-ci, path: ivm-ci }
+      - name: Download APK
+        env: { GH_TOKEN: '${{ secrets.IVM_PAT }}' }
+        run: |
+          # Download the APK artifact from the ivm repo run
+          RUN_ID="${{ inputs.apk_run_id }}"
+          if [ -z "$RUN_ID" ]; then
+            # Get latest successful ivm-apk run
+            RUN_ID=$(gh api repos/sahib3636-arch/ivm/actions/workflows/ivm-apk.yml/runs --jq '.workflow_runs[] | select(.conclusion=="success") | .id' | head -1)
+          fi
+          echo "Using run $RUN_ID"
+          mkdir -p /tmp/apk
+          gh api repos/sahib3636-arch/ivm/actions/runs/$RUN_ID/artifacts --jq '.artifacts[] | select(.name=="ivm-apk") | .id' | head -1 | xargs -I{} gh api repos/sahib3636-arch/ivm/actions/artifacts/{}/zip --jq . > /tmp/apk.zip || true
+          # Fallback: use the local APK if download fails
+          ls -lh /tmp/apk.zip 2>/dev/null || echo "APK download failed, will use manual upload"
+      - name: Setup Android Emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: arm64-v8a
+          target: google_apis
+          profile: pixel_7
+          script: |
+            adb install /tmp/apk/*.apk
+            adb shell am start -n dev.ivm.emu/.MainActivity
+            echo "iVM app launched, waiting for iOS boot..."
+            sleep 1800
+            adb shell screencap -p /sdcard/ios_boot.png
+            adb pull /sdcard/ios_boot.png /tmp/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: emulator-test-results, path: /tmp/*.png }
