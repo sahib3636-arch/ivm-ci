@@ -14,6 +14,8 @@ on:
       ivm_ref: { description: 'ivm repo ref', default: 'main' }
       ab: { description: 'run the x86 A/B benchmark (on|off)', default: 'on' }
       arm: { description: 'boot the Android engines natively on arm64 in a bionic chroot (on|off)', default: 'off' }
+      ivm_uset: { description: 'IVM_USET value for Photos test (empty for default)', default: '' }
+      photos_test: { description: 'run Photos grid test only (on|off)', default: 'off' }
 permissions: { actions: read, contents: read }
 jobs:
   arm:
