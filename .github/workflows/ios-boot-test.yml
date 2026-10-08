@@ -10,7 +10,10 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-        with: { repository: sahib3636-arch/ivm, path: ivm-repo }
+        with:
+          repository: sahib3636-arch/ivm
+          path: ivm-repo
+          token: ${{ secrets.IVM_PAT }}
       - name: Setup and boot iOS
         env:
           IVM_PAT: '${{ secrets.IVM_PAT }}'
