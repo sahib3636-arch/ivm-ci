@@ -1,0 +1,80 @@
+name: diskset-photos
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'ivm repo ref', default: 'main' }
+permissions: { actions: read, contents: read }
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: Generate test photos
+        run: |
+          python3 -c "
+          from PIL import Image
+          import os
+          os.makedirs('/tmp/testphotos', exist_ok=True)
+          # Generate 10 test JPEGs with different colors/patterns
+          for i in range(10):
+              img = Image.new('RGB', (800, 600), color=(i*25 % 256, (i*50) % 256, (i*75) % 256))
+              # Add some pattern
+              for x in range(0, 800, 100):
+                  for y in range(0, 600, 100):
+                      if (x+y+i*10) % 200 < 100:
+                          for dx in range(50):
+                              for dy in range(50):
+                                  if x+dx < 800 and y+dy < 600:
+                                      img.putpixel((x+dx, y+dy), (255, 255, 255))
+              img.save(f'/tmp/testphotos/IMG_000{i}.JPG', 'JPEG', quality=85)
+          print('Generated 10 test photos')
+          "
+      - name: Download diskset
+        env: { IVM_PAT: '${{ secrets.IVM_PAT }}' }
+        run: |
+          cd /tmp
+          # Download the diskset parts from ivm releases
+          curl -s -H "Authorization: Bearer $IVM_PAT" "https://api.github.com/repos/sahib3636-arch/ivm/releases/tags/diskset-setupdone-18A5351d" | python3 -c "
+          import sys,json,urllib.request
+          d=json.load(sys.stdin)
+          import os
+          tok=os.environ['IVM_PAT']
+          for a in d['assets']:
+              if '.part' in a['name'] or a['name'].endswith('.md5'):
+                  print(f\"Downloading {a['name']}\")
+                  req=urllib.request.Request(f\"https://api.github.com/repos/sahib3636-arch/ivm/releases/assets/{a['id']}\", headers={'Authorization': f'Bearer {tok}', 'Accept': 'application/octet-stream'})
+                  urllib.request.urlretrieve(req, f\"/tmp/{a['name']}\")
+          "
+          # Reassemble and extract
+          cat /tmp/*.part* > /tmp/diskset.tar.zst
+          mkdir -p /tmp/vm
+          zstd -d /tmp/diskset.tar.zst -o /tmp/diskset.tar
+          tar -xf /tmp/diskset.tar -C /tmp/vm
+          ls -lh /tmp/vm/
+      - name: Mount and inject photos
+        run: |
+          # Find the root disk image
+          ROOT_IMG=$(find /tmp/vm -name "root" -type f | head -1)
+          echo "Root image: $ROOT_IMG"
+          # Attach the image
+          hdiutil attach "$ROOT_IMG" -mountpoint /tmp/ios_root -owners on
+          # Copy photos to DCIM
+          mkdir -p /tmp/ios_root/var/mobile/Media/DCIM/100APPLE/
+          cp /tmp/testphotos/*.JPG /tmp/ios_root/var/mobile/Media/DCIM/100APPLE/
+          ls -lh /tmp/ios_root/var/mobile/Media/DCIM/100APPLE/
+          # Unmount
+          hdiutil detach /tmp/ios_root
+      - name: Repack and upload
+        env: { IVM_PAT: '${{ secrets.IVM_PAT }}' }
+        run: |
+          cd /tmp
+          tar -cf /tmp/diskset-photos.tar -C /tmp/vm .
+          zstd -T0 -6 -q -o /tmp/diskset-photos.tar.zst /tmp/diskset-photos.tar
+          # Upload as release asset
+          # (Using gh-release.sh pattern or direct API)
+          echo "Diskset with photos ready at /tmp/diskset-photos.tar.zst"
+          ls -lh /tmp/diskset-photos.tar.zst
+      - uses: actions/upload-artifact@v4
+        with: { name: diskset-photos, path: /tmp/diskset-photos.tar.zst }
