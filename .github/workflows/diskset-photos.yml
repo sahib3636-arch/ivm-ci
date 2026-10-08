@@ -60,14 +60,18 @@ jobs:
           # Find the root disk image
           ROOT_IMG=$(find /tmp/vm -name "root" -type f | head -1)
           echo "Root image: $ROOT_IMG"
-          # Attach the image
-          hdiutil attach "$ROOT_IMG" -mountpoint /tmp/ios_root -owners on
+          # Attach the raw disk image (APFS container)
+          hdiutil attach "$ROOT_IMG" -imagekey diskimage-class=CRawDiskImage -owners on
+          # Find the Data volume (contains /var/mobile)
+          DATA_VOL=$(ls -d /Volumes/* 2>/dev/null | while read v; do [ -d "$v/var/mobile" ] && echo "$v" && break; done)
+          echo "Data volume: $DATA_VOL"
+          [ -z "$DATA_VOL" ] && { echo "Data volume not found"; ls /Volumes/; exit 1; }
           # Copy photos to DCIM
-          mkdir -p /tmp/ios_root/var/mobile/Media/DCIM/100APPLE/
-          cp /tmp/testphotos/*.JPG /tmp/ios_root/var/mobile/Media/DCIM/100APPLE/
-          ls -lh /tmp/ios_root/var/mobile/Media/DCIM/100APPLE/
+          mkdir -p "$DATA_VOL/var/mobile/Media/DCIM/100APPLE/"
+          cp /tmp/testphotos/*.JPG "$DATA_VOL/var/mobile/Media/DCIM/100APPLE/"
+          ls -lh "$DATA_VOL/var/mobile/Media/DCIM/100APPLE/"
           # Unmount
-          hdiutil detach /tmp/ios_root
+          hdiutil detach "$DATA_VOL"
       - name: Repack and upload
         env: { IVM_PAT: '${{ secrets.IVM_PAT }}' }
         run: |
