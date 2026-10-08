@@ -27,7 +27,7 @@ jobs:
         with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
       - name: A/B of the phone engines (bionic chroot, native aarch64)
         env: { IVM_PAT: '${{ secrets.IVM_PAT }}', GH_TOKEN: '${{ github.token }}', PIN_ART: 'android-native-${{ inputs.pin }}', DEV_ART: 'android-native-${{ inputs.dev }}',
-               RUNS: '${{ inputs.runs }}', SMP: '${{ inputs.smp }}', RAM: '${{ inputs.ram }}', TB: '${{ inputs.tb }}' }
+               RUNS: '${{ inputs.runs }}', SMP: '${{ inputs.smp }}', RAM: '${{ inputs.ram }}', TB: '${{ inputs.tb }}', IVM_USET: '${{ inputs.ivm_uset }}', CAM_PHOTOS: '1' }
         run: sudo -E bash ivm-repo/ivm/bench/bench-android-arm.sh
       - uses: actions/upload-artifact@v4
         if: always()
@@ -52,9 +52,9 @@ jobs:
           nproc; free -g; df -h / | tail -1
       - name: A/B in debian:trixie
         env: { IVM_PAT: '${{ secrets.IVM_PAT }}', PIN: '${{ inputs.pin }}', DEV: '${{ inputs.dev }}', RUNS: '${{ inputs.runs }}',
-               SMP: '${{ inputs.smp }}', RAM: '${{ inputs.ram }}', TB: '${{ inputs.tb }}' }
+               SMP: '${{ inputs.smp }}', RAM: '${{ inputs.ram }}', TB: '${{ inputs.tb }}', IVM_USET: '${{ inputs.ivm_uset }}', CAM_PHOTOS: '1' }
         run: |
-          docker run --rm -e IVM_PAT -e PIN -e DEV -e RUNS -e SMP -e RAM -e TB -v "$GITHUB_WORKSPACE/ivm-repo":/home/user \
+          docker run --rm -e IVM_PAT -e PIN -e DEV -e RUNS -e SMP -e RAM -e TB -e IVM_USET -e CAM_PHOTOS -v "$GITHUB_WORKSPACE/ivm-repo":/home/user \
             -v /mnt:/opt debian:trixie bash /home/user/ivm/bench/bench-ci.sh
       - uses: actions/upload-artifact@v4
         if: always()
