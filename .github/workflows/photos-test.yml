@@ -1,0 +1,38 @@
+name: photos-test
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_uset: { description: 'IVM_USET value to test (empty for default)', default: '' }
+      ivm_ref: { description: 'ivm repo ref', default: 'main' }
+permissions: { actions: read, contents: read }
+jobs:
+  test:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: Setup and run Photos test
+        env:
+          IVM_PAT: '${{ secrets.IVM_PAT }}'
+          CAM_PHOTOS: '1'
+          IVM_USET: '${{ inputs.ivm_uset }}'
+        run: |
+          set -uo pipefail
+          R=$HOME; O=$R/bench-out; mkdir -p "$O" /opt/b /opt/vm
+          sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build meson pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev libzstd-dev libpng-dev libjpeg-dev nettle-dev libgmp-dev liblzfse-dev libtasn1-6-dev zlib1g-dev liblz4-dev cmake procps >/dev/null
+          mkdir -p $R/.tokens; printf %s "$IVM_PAT" > $R/.tokens/github.pat; chmod 600 $R/.tokens/github.pat
+          # Download diskset
+          bash $R/ivm-repo/ivm/inferno/gh-release.sh get diskset-setupdone-18A5351d /opt/dl > $O/download.log 2>&1
+          zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS && rm -rf /opt/dl
+          VMD=$(dirname "$(ls /opt/vm/*/entry.json | head -1)"); echo "VM=$VMD"
+          # Build engine (use pinned commit)
+          bash $R/ivm-repo/ivm/bench/build-x86.sh cc4302a99167abec69b714cfd00c38caece7e7de /opt/b/eng > $O/build.log 2>&1; tail -20 $O/build.log
+          # Run Photos test
+          QD=$(ls -d /opt/b/keymaps-* 2>/dev/null | head -1); [ -z "$QD" ] && QD=/tmp/qd && mkdir -p $QD
+          CAM_PHOTOS=1 IVM_USET="$IVM_USET" python3 -u $R/ivm-repo/ivm/bench/bench.py /opt/b/eng "$QD" "$VMD" "$O" "photos-test" "4" "3G" "512" 2>&1 | tee $O/bench.log
+          echo "=== Photos results ==="
+          grep -E "photos_grid_reached|photos_state|photos_launch_tries" $O/bench.log | tail -5
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: photos-test-results, path: /home/runner/bench-out/bench.log }
