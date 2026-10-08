@@ -14,7 +14,11 @@ jobs:
           repository: sahib3636-arch/ivm
           path: ivm-repo
           token: ${{ secrets.IVM_PAT }}
-      - name: Setup and boot iOS
+      - name: Setup dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential git curl ca-certificates jq zstd python3 ninja-build meson pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev libzstd-dev libpng-dev libjpeg-dev nettle-dev libgmp-dev liblzfse-dev libtasn1-6-dev zlib1g-dev liblz4-dev cmake procps
+      - name: Boot iOS
         env:
           IVM_PAT: '${{ secrets.IVM_PAT }}'
           IVM_USET: '${{ inputs.ivm_uset }}'
@@ -22,17 +26,29 @@ jobs:
           set -x
           R=$GITHUB_WORKSPACE
           SRC=$R/ivm-repo
+          O=$R/boot-out
+          mkdir -p "$O" /opt/b /opt/vm
           # Token for gh-release.sh
           sudo mkdir -p /home/user/.tokens
           printf %s "$IVM_PAT" | sudo tee /home/user/.tokens/github.pat > /dev/null
           sudo chmod 644 /home/user/.tokens/github.pat
-          # Download diskset
+          # Download and extract diskset
           mkdir -p /opt/dl
           bash $SRC/ivm/inferno/gh-release.sh get diskset-setupdone-18A5351d /opt/dl
-          ls -lh /opt/dl/
-          # Build engine (visible output, no redirect)
-          bash $SRC/ivm/bench/build-x86.sh 2>&1 | head -100
-          echo "Build done, checking engine..."
-          ls -lh /opt/b/ 2>/dev/null || echo "No /opt/b"
-          # Boot iOS (simple, 5 min timeout)
-          echo "Boot test complete"
+          zstd -dc /opt/dl/*.tar.zst | sudo tar -C /opt/vm -xS
+          VMD=$(dirname "$(ls /opt/vm/*/entry.json | head -1)")
+          echo "VM=$VMD"
+          # Build engine
+          bash $SRC/ivm/bench/build-x86.sh HEAD /opt/b/eng 2>&1 | tail -20
+          # Setup keymaps
+          QD=$(ls -d /opt/b/keymaps-* | head -1)
+          mkdir -p /opt/qd && cp -r "$QD" /opt/qd/keymaps
+          # Boot iOS with bench.py (5 min timeout for boot test)
+          echo "Booting iOS..."
+          timeout 300 python3 -u $SRC/ivm/bench/bench.py /opt/b/eng /opt/qd "$VMD" "$O" "boot-test" "4" "3G" "512" 2>&1 | tee $O/boot.log | head -200
+          echo "Boot test done"
+          # Check if iOS booted by looking for SpringBoard in log
+          grep -i "springboard\|boot" $O/boot.log | head -10 || echo "No boot markers found"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: ios-boot-results, path: boot-out/ }
