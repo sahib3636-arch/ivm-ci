@@ -12,6 +12,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: Restore cached engine build
+        id: eng-cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/b/eng-bundle
+          # Bundle is the built engine binary + keymaps + boot splash for the
+          # pinned Inferno commit. Key covers the build script and patch set,
+          # so any patch/script change invalidates the cache.
+          key: photos-eng-${{ runner.os }}-${{ runner.arch }}-cc4302a-${{ hashFiles('ivm-repo/ivm/bench/build-x86.sh', 'ivm-repo/ivm/inferno/patches/**') }}
       - name: Setup and run Photos test
         env:
           IVM_PAT: '${{ secrets.IVM_PAT }}'
@@ -27,21 +36,38 @@ jobs:
           # meson_version: '>=1.5.0')); Ubuntu 24.04 apt ships 1.3.x, which makes
           # ../configure fail ~3 min into build-x86.sh. Same fix as ios-boot-test
           # (pipx meson>=1.5.0), mirroring ivm-ci engine.yml.
-          pipx install 'meson==1.7.0' && export PATH="$HOME/.local/bin:$PATH" && meson --version
+          pipx install 'meson==1.7.0' && export PATH="$HOME/.local/bin:$PATH" && meson --version || { echo "MESON_INSTALL_FAILED"; exit 1; }
           sudo mkdir -p /home/user/.tokens; printf %s "$IVM_PAT" | sudo tee /home/user/.tokens/github.pat > /dev/null; sudo chmod 644 /home/user/.tokens/github.pat
           # Download diskset
           bash $R/ivm-repo/ivm/inferno/gh-release.sh get diskset-setupdone-18A5351d /opt/dl > $O/download.log 2>&1
           zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS && rm -rf /opt/dl
           VMD=$(dirname "$(ls /opt/vm/*/entry.json | head -1)"); echo "VM=$VMD"
-          # Build engine (use pinned commit); on failure print the tail of the
-          # build log so the real error is visible in the job log (previously
-          # swallowed: build.log was redirected and never uploaded).
-          if ! bash $R/ivm-repo/ivm/bench/build-x86.sh cc4302a99167abec69b714cfd00c38caece7e7de /opt/b/eng > $O/build.log 2>&1; then
-            echo "ENGINE_BUILD_FAILED: last 60 lines of build.log:"
-            tail -60 $O/build.log
-            exit 1
+          # Engine: reuse the cached bundle when the build inputs are unchanged,
+          # otherwise build from the pinned commit and refresh the bundle.
+          # (Overnight ask: make the workflow faster — a cache hit skips the
+          # ~15 min engine rebuild.)
+          if [ "${{ steps.eng-cache.outputs.cache-hit }}" = "true" ] && [ -x /opt/b/eng-bundle/eng ]; then
+            echo "ENGINE_CACHE_HIT: reusing cached build"
+            cp /opt/b/eng-bundle/eng /opt/b/eng
+            cp -r /opt/b/eng-bundle/keymaps-* /opt/b/ 2>/dev/null || true
+            mkdir -p /opt/share/icons/hicolor/512x512/apps
+            cp /opt/b/eng-bundle/CKQEMUBootSplash@2x.png /opt/share/icons/hicolor/512x512/apps/ 2>/dev/null || true
+            ls -lh /opt/b/eng
+          else
+            echo "ENGINE_CACHE_MISS: building engine (pinned commit)"
+            if ! bash $R/ivm-repo/ivm/bench/build-x86.sh cc4302a99167abec69b714cfd00c38caece7e7de /opt/b/eng > $O/build.log 2>&1; then
+              echo "ENGINE_BUILD_FAILED: last 60 lines of build.log:"
+              tail -60 $O/build.log
+              exit 1
+            fi
+            tail -5 $O/build.log
+            # Refresh the cache bundle for the next run (binary + keymaps + splash only)
+            rm -rf /opt/b/eng-bundle && mkdir -p /opt/b/eng-bundle
+            cp /opt/b/eng /opt/b/eng-bundle/eng
+            cp -r /opt/b/keymaps-* /opt/b/eng-bundle/ 2>/dev/null || true
+            cp /opt/share/icons/hicolor/512x512/apps/CKQEMUBootSplash@2x.png /opt/b/eng-bundle/ 2>/dev/null || true
+            ls -lh /opt/b/eng-bundle/
           fi
-          tail -5 $O/build.log
           # Run Photos test
           QD=$(ls -d /opt/b/keymaps-* 2>/dev/null | head -1); [ -z "$QD" ] && QD=/tmp/qd && mkdir -p $QD
           CAM_PHOTOS=1 IVM_USET="$IVM_USET" python3 -u $R/ivm-repo/ivm/bench/bench.py /opt/b/eng "$QD" "$VMD" "$O" "photos-test" "4" "3G" "512" 2>&1 | tee $O/bench.log
