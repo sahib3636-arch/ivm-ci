@@ -18,9 +18,11 @@ jobs:
         with:
           path: /opt/b/eng-bundle
           # Bundle is the built engine binary + keymaps + boot splash for the
-          # pinned Inferno commit. Key covers the build script and patch set,
-          # so any patch/script change invalidates the cache.
-          key: photos-eng-${{ runner.os }}-${{ runner.arch }}-cc4302a-${{ hashFiles('ivm-repo/ivm/bench/build-x86.sh', 'ivm-repo/ivm/inferno/patches/**') }}
+          # pinned Inferno commit. Key covers the ivm ref, the build script and
+          # patch set, so any patch/script/ref change invalidates the cache.
+          # (Without the ref, a run with ivm_ref=<branch-with-ktrace-wiring>
+          # would silently reuse an engine built from main that ignores IVM_USET.)
+          key: photos-eng-${{ runner.os }}-${{ runner.arch }}-${{ inputs.ivm_ref }}-cc4302a-${{ hashFiles('ivm-repo/ivm/bench/build-x86.sh', 'ivm-repo/ivm/inferno/patches/**') }}
       - name: Setup and run Photos test
         env:
           IVM_PAT: '${{ secrets.IVM_PAT }}'
