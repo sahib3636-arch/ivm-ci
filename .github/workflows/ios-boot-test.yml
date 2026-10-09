@@ -25,9 +25,12 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/boot-out"
           # Run everything in debian:trixie like bench-ci.sh does
           # CAM_TEST=1 enables the camera bring-up block; CAM_PHOTOS=1 (nested inside it)
-          # opens the Photos app and reports photos_grid_reached / photos_state
+          # opens the Photos app and reports photos_grid_reached / photos_state.
+          # CAM_SHOT=1 takes a photo (populates the library so the grid has content);
+          # CAM_EDITCAM=1 opens the editor from the camera viewer (tests the editor crash
+          # without needing the Photos grid).
           docker run --rm \
-            -e IVM_PAT -e IVM_USET -e CAM_TEST=1 -e CAM_PHOTOS=1 \
+            -e IVM_PAT -e IVM_USET -e CAM_TEST=1 -e CAM_PHOTOS=1 -e CAM_SHOT=1 -e CAM_EDITCAM=1 \
             -v "$GITHUB_WORKSPACE/ivm-repo":/home/user/ivm-repo \
             -v "$GITHUB_WORKSPACE/boot-out":/tmp/boot-out \
             -v /mnt:/opt \
@@ -75,7 +78,9 @@ jobs:
             fi
             # report Photos results (may be absent if the CAM_TEST block did not run)
             echo "=== Photos results ==="
-            grep -E "photos_grid_reached|photos_state|photos_launch_tries" $O/boot.log | tail -5 || echo "no photos metrics in boot.log"
+            grep -E "photos_grid_reached|photos_state|photos_launch_tries|photos_opened" $O/boot.log | tail -8 || echo "no photos metrics in boot.log"
+            echo "=== Editor results (CAM_EDITCAM) ==="
+            grep -E "editcam_frames|editor_frames|editor_diff" $O/boot.log | tail -5 || echo "no editor metrics in boot.log"
             # verify the USET hook actually engaged in the engine (if IVM_USET was set)
             if [ -n "$IVM_USET" ]; then
               echo "=== USET engagement check ==="
