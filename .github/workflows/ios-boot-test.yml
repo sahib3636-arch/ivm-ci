@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       ivm_uset: { description: 'IVM_USET value (empty for default)', default: '' }
+      ivm_ref: { description: 'ivm repo ref (branch/commit)', default: 'main' }
 permissions: { actions: read, contents: read }
 jobs:
   boot:
@@ -14,6 +15,7 @@ jobs:
           repository: sahib3636-arch/ivm
           path: ivm-repo
           token: ${{ secrets.IVM_PAT }}
+          ref: '${{ inputs.ivm_ref }}'
       - name: Boot iOS in Debian container
         env:
           IVM_PAT: '${{ secrets.IVM_PAT }}'
@@ -22,8 +24,10 @@ jobs:
           # boot-out must live on the runner (not inside the container) so the artifact step can see it
           mkdir -p "$GITHUB_WORKSPACE/boot-out"
           # Run everything in debian:trixie like bench-ci.sh does
+          # CAM_TEST=1 enables the camera bring-up block; CAM_PHOTOS=1 (nested inside it)
+          # opens the Photos app and reports photos_grid_reached / photos_state
           docker run --rm \
-            -e IVM_PAT -e IVM_USET \
+            -e IVM_PAT -e IVM_USET -e CAM_TEST=1 -e CAM_PHOTOS=1 \
             -v "$GITHUB_WORKSPACE/ivm-repo":/home/user/ivm-repo \
             -v "$GITHUB_WORKSPACE/boot-out":/tmp/boot-out \
             -v /mnt:/opt \
@@ -51,16 +55,24 @@ jobs:
             # Setup keymaps
             QD=$(ls -d /opt/b/keymaps-* | head -1)
             mkdir -p /opt/qd && cp -r "$QD" /opt/qd/keymaps
-            # Boot iOS
-            echo "=== Booting iOS ==="
-            timeout 300 python3 -u $SRC/ivm/bench/bench.py /opt/b/eng /opt/qd "$VMD" "$O" "boot-test" "4" "3G" "512" 2>&1 | tee $O/boot.log | tail -50
-            echo "=== Boot done ==="
+            # Boot iOS and run Photos test (CAM_TEST/CAM_PHOTOS are set in the container env)
+            echo "=== Booting iOS + Photos test ==="
+            timeout 600 python3 -u $SRC/ivm/bench/bench.py /opt/b/eng /opt/qd "$VMD" "$O" "photos-ci" "4" "3G" "512" 2>&1 | tee $O/boot.log | tail -50
+            echo "=== Boot + Photos done ==="
             # success = iOS actually reached the home screen (bench.py detects it via VNC)
             if grep -q "home settled" $O/boot.log; then
               echo "BOOT_OK: iOS reached the home screen"
             else
               echo "BOOT_FAIL: home screen not detected in boot.log"
               exit 1
+            fi
+            # report Photos results (may be absent if the CAM_TEST block did not run)
+            echo "=== Photos results ==="
+            grep -E "photos_grid_reached|photos_state|photos_launch_tries" $O/boot.log | tail -5 || echo "no photos metrics in boot.log"
+            # verify the USET hook actually engaged in the engine (if IVM_USET was set)
+            if [ -n "$IVM_USET" ]; then
+              echo "=== USET engagement check ==="
+              grep -E "\[uset\]" $O/boot.log | head -5 || echo "USET-HOOK-NOT-ENGAGED (IVM_USET was set but no [uset] lines in log)"
             fi
             '
       - uses: actions/upload-artifact@v4
