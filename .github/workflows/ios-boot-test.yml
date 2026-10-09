@@ -49,8 +49,15 @@ jobs:
             zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS
             VMD=$(dirname "$(ls /opt/vm/*/entry.json | head -1)")
             echo "VM=$VMD"
-            # Build engine
-            bash $SRC/ivm/bench/build-x86.sh HEAD /opt/b/eng 2>&1 | tail -5
+            # Build engine (full build log goes to the artifact dir so failures are diagnosable)
+            set -o pipefail
+            bash $SRC/ivm/bench/build-x86.sh HEAD /opt/b/eng > $O/build-x86.log 2>&1
+            if [ ! -x /opt/b/eng ]; then
+              echo "ENGINE_BUILD_FAILED: /opt/b/eng missing - last 40 lines of build-x86.log:"
+              tail -40 $O/build-x86.log
+              exit 1
+            fi
+            set +o pipefail
             ls -lh /opt/b/eng
             # Setup keymaps
             QD=$(ls -d /opt/b/keymaps-* | head -1)
