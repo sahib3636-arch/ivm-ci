@@ -44,7 +44,10 @@ jobs:
           tail -20 $O/build.log
           # Run Photos test
           QD=$(ls -d /opt/b/keymaps-* 2>/dev/null | head -1); [ -z "$QD" ] && QD=/tmp/qd && mkdir -p $QD
-          CAM_PHOTOS=1 IVM_USET="$IVM_USET" python3 -u $R/ivm-repo/ivm/bench/bench.py /opt/b/eng "$QD" "$VMD" "$O" "photos-test" "4" "3G" "512" 2>&1 | tee $O/bench.log
+          # qemu_find_file(KEYMAP) looks for <datadir>/keymaps/en-us — -L needs the PARENT of
+          # keymaps/ (same as ios-boot-test's /opt/qd wrap); a bare keymaps-<sha> dir exits at VNC open.
+          mkdir -p /opt/qd && rm -rf /opt/qd/keymaps && cp -r "$QD" /opt/qd/keymaps
+          CAM_PHOTOS=1 IVM_USET="$IVM_USET" python3 -u $R/ivm-repo/ivm/bench/bench.py /opt/b/eng /opt/qd "$VMD" "$O" "photos-test" "4" "3G" "512" 2>&1 | tee $O/bench.log
           echo "=== Photos results ==="
           grep -E "photos_grid_reached|photos_state|photos_launch_tries" $O/bench.log | tail -5
       - uses: actions/upload-artifact@v4
