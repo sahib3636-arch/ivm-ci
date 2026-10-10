@@ -66,6 +66,8 @@ jobs:
           # PGO like the phone build (ivm-apk merges explore-pgoapp.zip with NDK llvm-profdata). Without it the
           # 6541 tree trips qemu_build_not_reached in tcg/aarch64 and target/arm (inlining-dependent asserts).
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y llvm-18 >/dev/null 2>&1 || true
+          # lzfse is needed by the 6541 tree regardless of the patch list (IVM_PATCHES may be cleared for experiments)
+          if [ ! -f /usr/local/include/lzfse.h ]; then rm -rf /tmp/lzfse-src && git clone -q --depth 1 https://github.com/lzfse/lzfse /tmp/lzfse-src && cmake -S /tmp/lzfse-src -B /tmp/lzfse-src/b -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_INSTALL_PREFIX=/usr/local >/dev/null && sudo cmake --build /tmp/lzfse-src/b --target install >/dev/null && sudo ldconfig; fi
           PGW=$R/pgo-raw; rm -rf $PGW; mkdir -p $PGW; unzip -q $R/ivm-repo/ivm/android/ci/pgo/explore-pgoapp.zip -d $PGW
           llvm-profdata-18 merge -o /tmp/ivm.profdata $(find $PGW -name '*.profraw') && ls -la /tmp/ivm.profdata
           PGOF="-fprofile-use=/tmp/ivm.profdata -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date -Wno-backend-plugin"
