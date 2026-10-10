@@ -15,7 +15,13 @@ jobs:
       - name: Setup and run Photos test
         env:
           IVM_PAT: '${{ secrets.IVM_PAT }}'
+          # CAM_PHOTOS lives INSIDE bench.py's CAM_TEST camera block (bench.py:434/483) — without
+          # CAM_TEST=1 the Photos code never runs (run#15: perfect boot, zero photos_* fields).
+          # CAM_SHOT populates the library so the grid has content; CAM_EDITCAM tests the editor.
+          CAM_TEST: '1'
           CAM_PHOTOS: '1'
+          CAM_SHOT: '1'
+          CAM_EDITCAM: '1'
           IVM_USET: '${{ inputs.ivm_uset }}'
         run: |
           set -uxo pipefail
@@ -55,6 +61,8 @@ jobs:
         with:
           name: photos-test-results
           path: |
-            /home/runner/bench-out/bench.log
-            /home/runner/bench-out/build.log
+            ${{ github.workspace }}/bench-out/bench.log
+            ${{ github.workspace }}/bench-out/build.log
+            ${{ github.workspace }}/bench-out/result.json
+            ${{ github.workspace }}/bench-out/*.png
           if-no-files-found: warn
