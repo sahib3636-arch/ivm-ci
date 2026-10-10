@@ -1,0 +1,81 @@
+name: phone-photos
+# s41 diagnostic: the PHONE recipe (engine 6541861f + 39 exp patches + legacy-6541 scripts) and the
+# PHONE camera/Photos env (iVM 4.0.53 Inferno.kt), booted on a GitHub runner. Photos is driven
+# with a populated library, the guest's own .ips crash reports are extracted from the disk, and the
+# ObjC exception hook (IVM_UTRACE) is on. Read the artifact, do not trust the summary line alone.
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'ivm repo ref', default: 'main' }
+      ivm_uset: { description: 'IVM_USET (empty = the 4.0.53 phone PHOTO_USET)', default: '' }
+      extra_env: { description: 'extra KEY=VAL pairs, space separated (appended last)', default: '' }
+permissions: { actions: read, contents: read }
+jobs:
+  photos:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: boot iOS on the phone recipe + Photos with a library
+        env:
+          IVM_PAT: '${{ secrets.IVM_PAT }}'
+          # ---- phone recipe: ivm-apk 4.0.53 / ivm/android/ci (6541861f + exp list), see ivm-repo build-x86.sh ----
+          IVM_PATCHES: 'panelhz android-perf fpslog hle-bilerp hle-nn inljc jcttbr0 fpixc fpixc_host fpzero fpden nobti jcbits14 asidlog cflagsinline jclog gxfinline zvainline adpdirty tlbrange vtlb16 a13-ipi-replay haltpoll jcshared hle-lb hle-r3 hle-sob hle-zva hle-bq tbfollow tbfollow2 tbfollow3 tbfollow4 zdiscard jitdiscard tbarray ucdyn ispstub ktrace'
+          # ---- phone env: Inferno.kt engineEnv + cameraEnv + PHOTO_USET (4.0.53) ----
+          IVM_ADPF: '1'
+          IVM_UCLAMP_MIN: '384'
+          IVM_PANEL_HZ: '60'
+          IVM_JCS: '1'
+          IVM_FOLLOWX: '0'
+          IVM_FOLLOWR: '0'
+          IVM_ISP: '1'
+          IVM_ISP_LOG: '0'
+          IVM_ISP_FEED: '/tmp/ivm-feed/feed.bin'
+          IVM_ISP_FEED_TEST: '1'
+          IVM_SLIDEPC: 'fffffff007b1901c'
+          IVM_LOCKFIX: '18bd24cd8,20,-4'
+          IVM_USKIP: '1c2824adc/1d722c694,1c2824f84/1d722c694'
+          IVM_ISP_STILLSET: '100'
+          IVM_ISP_STILLFILL: '1'
+          IVM_ISP_P0EVERY: '8'
+          IVM_UTRACE: '1801953f0'
+          IVM_UTRACE_BT: '1'
+          IVM_USET: '18bcf9b64:8=0,1c2918af0:0=1,1a8073be0:0=0,18c250eb0:0=1,18b9c08a4:8=1,18c25454c:1=3000000,19d2638d8:0=0/2,19d261b2c:32=19d261b34/23,19cd2f024:32=19cd2f028/20'
+          # ---- harness: camera + library + Photos + guest crash reports ----
+          CAM_TEST: '1'
+          CAM_SHOT: '1'
+          CAM_SHOTS3: '1'
+          CAM_PHOTOS: '1'
+          CAM_EDITCAM: '1'
+          CAM_IPS: '1'
+          CAM_DUMP: '1'
+        run: |
+          set -uxo pipefail
+          R=$GITHUB_WORKSPACE; O=$R/bench-out; mkdir -p "$O" /opt/b /opt/vm /tmp/ivm-feed
+          [ -n "${{ inputs.ivm_uset }}" ] && export IVM_USET='${{ inputs.ivm_uset }}'
+          for kv in ${{ inputs.extra_env }}; do export "$kv"; done
+          sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build pkg-config libglib2.0-dev libpixman-1-dev libslirp
+          curl -fsSL https://ftpmirror.gnu.org/nettle/nettle-3.10.1.tar.gz | tar -xz -C /tmp
+          cd /tmp/nettle-3.10.1 && ./configure --prefix=/usr/local --disable-documentation >nettle-conf.log && make -j"$(nproc)" >nettle-make.log && sudo make install >/dev/null && sudo ldconfig && cd "$R"
+          pipx install meson==1.7.0 || pip3 install --user meson==1.7.0
+          sudo mkdir -p /home/user/.tokens; printf %s "$IVM_PAT" | sudo tee /home/user/.tokens/github.pat > /dev/null; sudo chmod 644 /home/user/.tokens/github.pat
+          bash $R/ivm-repo/ivm/inferno/gh-release.sh get diskset-setupdone-18A5351d /opt/dl > $O/download.log 2>&1
+          zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS && rm -rf /opt/dl
+          VMD=$(dirname "$(ls /opt/vm/*/entry.json | head -1)"); echo "VM=$VMD"
+          # the phone's 6541861f engine (phone recipe), built for the runner
+          if ! bash $R/ivm-repo/ivm/bench/build-x86.sh 6541861f4d033a0de327b5ccc5180ebac20bf461 /opt/b/eng > $O/build.log 2>&1; then
+            echo "=== ENGINE BUILD FAILED ==="; tail -80 $O/build.log; exit 1
+          fi
+          tail -5 $O/build.log
+          QD=$(ls -d /opt/b/keymaps-* 2>/dev/null | head -1); [ -z "$QD" ] && QD=/tmp/qd && mkdir -p $QD
+          mkdir -p /opt/qd && rm -rf /opt/qd/keymaps && cp -r "$QD" /opt/qd/keymaps
+          python3 -u $R/ivm-repo/ivm/bench/bench.py /opt/b/eng /opt/qd "$VMD" "$O" "phone-photos" "4" "4G" "1024" 2>&1 | tee $O/bench.log
+          echo "=== key results ==="
+          grep -E "photos_grid_reached|photos_state|photos_launch_tries|photos_frames|photos_ctimes|panic|editcam|ips_files|ips_error" $O/bench.log | tail -20
+          echo "=== utrace (ObjC exceptions) ==="
+          grep -E "utrace|NSException|NSInternal|NSInvalid|objc" $O/bench.log | head -40 || true
+          echo "=== ips files ==="; ls -la $O | head -60
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: phone-photos-out, path: bench-out, if-no-files-found: warn }
