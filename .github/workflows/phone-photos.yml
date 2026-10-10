@@ -63,8 +63,14 @@ jobs:
           bash $R/ivm-repo/ivm/inferno/gh-release.sh get diskset-setupdone-18A5351d /opt/dl > $O/download.log 2>&1
           zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS && rm -rf /opt/dl
           VMD=$(dirname "$(ls /opt/vm/*/entry.json | head -1)"); echo "VM=$VMD"
+          # PGO like the phone build (ivm-apk merges explore-pgoapp.zip with NDK llvm-profdata). Without it the
+          # 6541 tree trips qemu_build_not_reached in tcg/aarch64 and target/arm (inlining-dependent asserts).
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y llvm-18 >/dev/null 2>&1 || true
+          PGW=$R/pgo-raw; rm -rf $PGW; mkdir -p $PGW; unzip -q $R/ivm-repo/ivm/android/ci/pgo/explore-pgoapp.zip -d $PGW
+          llvm-profdata-18 merge -o /tmp/ivm.profdata $(find $PGW -name '*.profraw') && ls -la /tmp/ivm.profdata
+          PGOF="-fprofile-use=/tmp/ivm.profdata -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date -Wno-backend-plugin"
           # the phone's 6541861f engine (phone recipe), built for the runner
-          if ! IVM_MESON=1 CC=clang CXX=clang++ bash $R/ivm-repo/ivm/bench/build-x86.sh 6541861f4d033a0de327b5ccc5180ebac20bf461 /opt/b/eng > $O/build.log 2>&1; then
+          if ! IVM_MESON=1 CC=clang CXX=clang++ CFLAGS="$PGOF" LDFLAGS="-fprofile-use=/tmp/ivm.profdata" bash $R/ivm-repo/ivm/bench/build-x86.sh 6541861f4d033a0de327b5ccc5180ebac20bf461 /opt/b/eng > $O/build.log 2>&1; then
             echo "=== ENGINE BUILD FAILED ==="; tail -20 $O/build.log; cp /opt/b/*/src/build/ninja.log $O/ 2>/dev/null; cp /opt/b/*/src/build/meson-logs/meson-log.txt $O/ 2>/dev/null; grep -m40 -B4 -A14 -E "error|Error|ERROR" /opt/b/*/src/build/ninja.log | head -150; exit 1
           fi
           tail -5 $O/build.log
