@@ -23,6 +23,12 @@ jobs:
           which bash zstd tar jq || echo "Missing commands!"
 
           sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev libzstd-dev libpng-dev libjpeg-dev nettle-dev libgmp-dev liblzfse-dev libtasn1-6-dev zlib1g-dev liblz4-dev cmake procps
+          # Inferno's meson.build hard-requires nettle >=3.10 (meson.build:1758) when --enable-nettle;
+          # ubuntu-24.04-arm ships 3.9.1 (ios-boot-test only passes because trixie's container has 3.10.1).
+          # Build 3.10.1 into /usr/local: same soname (libnettle.so.8), pkg-config prefers /usr/local.
+          curl -fsSL https://ftpmirror.gnu.org/nettle/nettle-3.10.1.tar.gz | tar -xz -C /tmp
+          cd /tmp/nettle-3.10.1 && ./configure --prefix=/usr/local --disable-documentation >nettle-conf.log && make -j"$(nproc)" >nettle-make.log && sudo make install >/dev/null && sudo ldconfig && cd "$R"
+          echo "nettle now: $(pkg-config --modversion nettle)"
           pipx install meson==1.7.0 || pip3 install --user meson==1.7.0
           sudo mkdir -p /home/user/.tokens; printf %s "$IVM_PAT" | sudo tee /home/user/.tokens/github.pat > /dev/null; sudo chmod 644 /home/user/.tokens/github.pat
           # Download diskset
