@@ -55,7 +55,7 @@ jobs:
           R=$GITHUB_WORKSPACE; O=$R/bench-out; mkdir -p "$O" /opt/b /opt/vm /tmp/ivm-feed
           [ -n "${{ inputs.ivm_uset }}" ] && export IVM_USET='${{ inputs.ivm_uset }}'
           for kv in ${{ inputs.extra_env }}; do export "$kv"; done
-          sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev cmake libbz2-dev libpng-dev libjpeg-dev libzstd-dev liblz4-dev libgmp-dev libtasn1-6-dev
+          sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev cmake libbz2-dev libpng-dev libjpeg-dev libzstd-dev liblz4-dev libgmp-dev libtasn1-6-dev clang
           curl -fsSL https://ftpmirror.gnu.org/nettle/nettle-3.10.1.tar.gz | tar -xz -C /tmp
           cd /tmp/nettle-3.10.1 && ./configure --prefix=/usr/local --disable-documentation >nettle-conf.log && make -j"$(nproc)" >nettle-make.log && sudo make install >/dev/null && sudo ldconfig && cd "$R"
           pipx install meson==1.7.0 || pip3 install --user meson==1.7.0
@@ -64,7 +64,7 @@ jobs:
           zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS && rm -rf /opt/dl
           VMD=$(dirname "$(ls /opt/vm/*/entry.json | head -1)"); echo "VM=$VMD"
           # the phone's 6541861f engine (phone recipe), built for the runner
-          if ! bash $R/ivm-repo/ivm/bench/build-x86.sh 6541861f4d033a0de327b5ccc5180ebac20bf461 /opt/b/eng > $O/build.log 2>&1; then
+          if ! CC=clang CXX=clang++ bash $R/ivm-repo/ivm/bench/build-x86.sh 6541861f4d033a0de327b5ccc5180ebac20bf461 /opt/b/eng > $O/build.log 2>&1; then
             echo "=== ENGINE BUILD FAILED ==="; tail -20 $O/build.log; cp /opt/b/*/src/build/ninja.log $O/ 2>/dev/null; cp /opt/b/*/src/build/meson-logs/meson-log.txt $O/ 2>/dev/null; grep -m40 -B4 -A14 -E "error|Error|ERROR" /opt/b/*/src/build/ninja.log | head -150; exit 1
           fi
           tail -5 $O/build.log
