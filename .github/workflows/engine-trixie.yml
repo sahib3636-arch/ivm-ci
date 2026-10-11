@@ -1,43 +1,37 @@
 name: engine-trixie
-# Diagnostic: does the pinned Inferno engine (6541861f, NO patches) compile in a Debian trixie container?
-# Dependencies and configure options follow chefkiss.dev Inferno host-setup (Debian). Compiler = trixie gcc.
+# Diagnostic: build the pinned Inferno engine (6541861f, NO patches) with the SAME build-x86.sh that
+# ios-boot-test used (its run 14 booted iOS in debian:trixie). Isolates the toolchain from our patch chain.
 on:
   workflow_dispatch:
     inputs:
-      ref: { description: 'Inferno commit', default: '6541861f4d033a0de327b5ccc5180ebac20bf461' }
+      commit: { description: 'Inferno commit', default: '6541861f4d033a0de327b5ccc5180ebac20bf461' }
+      ivm_ref: { description: 'ivm repo ref', default: 'main' }
 permissions: { contents: read }
 jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    container: { image: 'debian:trixie' }
     steps:
-      - name: packages (Inferno Debian deps)
+      - name: build in debian:trixie (same container as ios-boot-test)
+        env:
+          IVM_PAT: '${{ secrets.IVM_PAT }}'
+          COMMIT: '${{ inputs.commit }}'
+          IVM_REF: '${{ inputs.ivm_ref }}'
         run: |
-          apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential libtool meson ninja-build pkg-config \
-            git curl ca-certificates python3 python3-venv device-tree-compiler libglib2.0-dev gnutls-bin libjpeg-dev \
-            libpng-dev libslirp-dev libssh-dev libusb-1.0-0-dev liblzo2-dev libncurses-dev libpixman-1-dev \
-            libsnappy-dev zstd libzstd-dev libgnutls28-dev libgmp-dev liblzfse-dev libtasn1-6-dev nettle-dev \
-            libbz2-dev cmake > /tmp/apt.log 2>&1 || { tail -40 /tmp/apt.log; exit 1; }
-          gcc --version | head -1; meson --version; ninja --version
-      - name: clone Inferno at the pin
-        run: |
-          git clone -q https://github.com/ChefKissInc/Inferno src
-          cd src && git checkout -q ${{ inputs.ref }} && git submodule update --init --depth 1 > /tmp/sub.log 2>&1 || true
-          git log --oneline -1
-      - name: configure (Inferno Linux recipe)
-        id: cfg
-        run: |
-          mkdir -p src/build && cd src/build
-          ../configure --target-list=aarch64-softmmu --enable-lzfse --enable-slirp --enable-zstd --enable-nettle --enable-gnutls --disable-gtk --disable-sdl --disable-werror --disable-qom-cast-debug --disable-debug-info > ../../configure.log 2>&1 || { tail -60 ../../configure.log; exit 1; }
-          echo "configure ok"; grep -E "Compiler|C compiler|optimization|Build type" ../../configure.log | head
-      - name: build qemu-system-aarch64
-        run: |
-          cd src/build && ninja -j"$(nproc)" qemu-system-aarch64 > ../../ninja.log 2>&1; rc=$?
-          echo "ninja rc=$rc"; grep -m20 -B3 -A6 -E "error:|FAILED:" ../../ninja.log | head -80
-          exit $rc
-      - name: upload logs
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          docker run --rm -e IVM_PAT -e COMMIT -e IVM_REF \
+            -v "$GITHUB_WORKSPACE/out":/tmp/out debian:trixie bash -c '
+              set -u
+              apt-get update -qq
+              DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build meson pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev libzstd-dev libpng-dev libjpeg-dev nettle-dev libgmp-dev liblzfse-dev libtasn1-6-dev libgnutls28-dev libbz2-dev cmake > /tmp/out/apt.log 2>&1 || { tail -40 /tmp/out/apt.log; exit 1; }
+              gcc --version | head -1 | tee /tmp/out/toolchain.txt; meson --version | tee -a /tmp/out/toolchain.txt; nettle-config --version 2>/dev/null | tee -a /tmp/out/toolchain.txt || true
+              git clone -q "https://x-access-token:${IVM_PAT}@github.com/sahib3636-arch/ivm.git" /tmp/ivm
+              git -C /tmp/ivm checkout -q "$IVM_REF"; git -C /tmp/ivm log --oneline -1 | tee -a /tmp/out/toolchain.txt
+              mkdir -p /opt/b
+              bash /tmp/ivm/ivm/bench/build-x86.sh "$COMMIT" /opt/b/eng > /tmp/out/build.log 2>&1; rc=$?
+              echo "build-x86 rc=$rc" | tee -a /tmp/out/toolchain.txt
+              if [ $rc -ne 0 ]; then tail -60 /tmp/out/build.log; cp /opt/b/*/src/build/ninja.log /tmp/out/ 2>/dev/null; cp /opt/b/*/src/build/meson-logs/meson-log.txt /tmp/out/ 2>/dev/null; grep -m20 -B3 -A8 -E "error:|FAILED:" /tmp/out/ninja.log 2>/dev/null | head -60; fi
+              exit $rc'
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
-        with: { name: engine-trixie-logs, path: '*.log', if-no-files-found: ignore }
+        with: { name: engine-trixie-out, path: out/, if-no-files-found: ignore }
