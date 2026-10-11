@@ -1,0 +1,61 @@
+name: phone-trixie
+'on':
+  workflow_dispatch:
+    inputs:
+      ivm_ref:
+        description: ivm repo ref
+        default: main
+permissions:
+  actions: read
+  contents: read
+jobs:
+  photos:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 170
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        repository: sahib3636-arch/ivm
+        token: ${{ secrets.IVM_PAT }}
+        ref: ${{ inputs.ivm_ref }}
+        path: ivm-repo
+        lfs: false
+    - name: write inner script
+      run: "cat > ivm-repo/../trixie-run.sh <<'INNEREOF'\nset -uxo pipefail\nR=/work; O=$R/bench-out; mkdir -p \"$O\" /opt/b /opt/vm /opt/dl /tmp/ivm-feed\napt-get update -qq\nDEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential git curl ca-certificates jq zstd python3 python3-venv python3-pip ninja-build meson pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev libzstd-dev libpng-dev libjpeg-dev nettle-dev libgmp-dev liblzfse-dev libtasn1-6-dev libgnutls28-dev libbz2-dev liblz4-dev libusb-1.0-0-dev libssh-dev liblzo2-dev libsnappy-dev cmake > $O/apt.log 2>&1 || { tail -40 $O/apt.log; exit 1; }\ngcc --version | head -1 | tee $O/toolchain.txt\nmkdir -p /home/user/.tokens && printf %s \"$IVM_PAT\" > /home/user/.tokens/github.pat && chmod 600 /home/user/.tokens/github.pat\nbash $R/ivm-repo/ivm/inferno/gh-release.sh get diskset-setupdone-18A5351d /opt/dl > $O/download.log 2>&1\nzstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS\nVMD=$(dirname \"$(ls /opt/vm/*/entry.json | head -1)\"); echo \"VM=$VMD\"\nif ! bash $R/ivm-repo/ivm/bench/build-x86.sh 6541861f4d033a0de327b5ccc5180ebac20bf461 /opt/b/eng > $O/build.log 2>&1; then\n  echo \"=== ENGINE BUILD FAILED ===\"; tail -20 $O/build.log\n  cp /opt/b/*/src/build/ninja.log $O/ 2>/dev/null; cp /opt/b/*/src/build/meson-logs/meson-log.txt $O/ 2>/dev/null\n  grep -m40 -B4 -A14 -E \"error:|FAILED:\" $O/ninja.log 2>/dev/null | head -150\n  exit 1\nfi\nls -lh /opt/b/eng\nQD=$(ls -d /opt/b/keymaps-* 2>/dev/null | head -1); [ -z \"$QD\" ] && QD=/tmp/qd && mkdir -p $QD\nmkdir -p /opt/qd && rm -rf /opt/qd/keymaps && cp -r \"$QD\" /opt/qd/keymaps\npython3 -u $R/ivm-repo/ivm/bench/bench.py /opt/b/eng /opt/qd \"$VMD\" \"$O\" \"phone-photos\" \"4\" \"4G\" \"1024\" 2>&1 | tee $O/bench.log\necho \"=== key results ===\"; grep -E \"photos_|utrace|NSException|NSInternal|panic|ips\" $O/bench.log | tail -40 || true\nINNEREOF\nmkdir -p bench-out"
+    - name: boot iOS + Photos in debian:trixie (phone recipe, gcc, no PGO)
+      env:
+        IVM_PAT: ${{ secrets.IVM_PAT }}
+        IVM_PATCHES: panelhz android-perf fpslog hle-bilerp hle-nn inljc jcttbr0 fpixc fpixc_host fpzero fpden nobti jcbits14 asidlog cflagsinline jclog gxfinline zvainline adpdirty tlbrange vtlb16 a13-ipi-replay haltpoll jcshared hle-lb hle-r3 hle-sob hle-zva hle-bq tbfollow tbfollow2 tbfollow3 tbfollow4 zdiscard jitdiscard tbarray ucdyn ispstub ktrace
+        IVM_ADPF: '1'
+        IVM_UCLAMP_MIN: '384'
+        IVM_PANEL_HZ: '60'
+        IVM_JCS: '1'
+        IVM_FOLLOWX: '0'
+        IVM_FOLLOWR: '0'
+        IVM_ISP: '1'
+        IVM_ISP_LOG: '0'
+        IVM_ISP_FEED: /tmp/ivm-feed/feed.bin
+        IVM_ISP_FEED_TEST: '1'
+        IVM_SLIDEPC: fffffff007b1901c
+        IVM_LOCKFIX: 18bd24cd8,20,-4
+        IVM_USKIP: 1c2824adc/1d722c694,1c2824f84/1d722c694
+        IVM_ISP_STILLSET: '100'
+        IVM_ISP_STILLFILL: '1'
+        IVM_ISP_P0EVERY: '8'
+        IVM_UTRACE: 1801953f0
+        IVM_UTRACE_BT: '1'
+        IVM_USET: 18bcf9b64:8=0,1c2918af0:0=1,1a8073be0:0=0,18c250eb0:0=1,18b9c08a4:8=1,18c25454c:1=3000000,19d2638d8:0=0/2,19d261b2c:32=19d261b34/23,19cd2f024:32=19cd2f028/20
+        CAM_TEST: '1'
+        CAM_SHOT: '1'
+        CAM_SHOTS3: '1'
+        CAM_PHOTOS: '1'
+        CAM_EDITCAM: '1'
+        CAM_IPS: '1'
+        CAM_DUMP: '1'
+      run: docker run --rm -e IVM_PATCHES -e IVM_ADPF -e IVM_UCLAMP_MIN -e IVM_PANEL_HZ -e IVM_JCS -e IVM_FOLLOWX -e IVM_FOLLOWR -e IVM_ISP -e IVM_ISP_LOG -e IVM_ISP_FEED -e IVM_ISP_FEED_TEST -e IVM_SLIDEPC -e IVM_LOCKFIX -e IVM_USKIP -e IVM_ISP_STILLSET -e IVM_ISP_STILLFILL -e IVM_ISP_P0EVERY -e IVM_UTRACE -e IVM_UTRACE_BT -e IVM_USET -e CAM_TEST -e CAM_SHOT -e CAM_SHOTS3 -e CAM_PHOTOS -e CAM_EDITCAM -e CAM_IPS -e CAM_DUMP -e IVM_PAT -v "$GITHUB_WORKSPACE":/work -w /work debian:trixie bash /work/trixie-run.sh
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: phone-trixie-out
+        path: bench-out
+        if-no-files-found: ignore
