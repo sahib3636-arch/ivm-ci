@@ -75,7 +75,7 @@ jobs:
           PGOF="-fprofile-use=/tmp/ivm.profdata -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date -Wno-backend-plugin"
           # the phone's 6541861f engine (phone recipe), built for the runner
           NDKB=${ANDROID_NDK_HOME:-$ANDROID_NDK_LATEST_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin; $NDKB/clang --version | head -1
-          if ! PKG_CONFIG_PATH=$(cat /tmp/npc.txt):/usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig IVM_MESON=1 CC="$NDKB/clang --gcc-toolchain=/usr" CXX="$NDKB/clang++ --gcc-toolchain=/usr" CFLAGS="$PGOF" LDFLAGS="-fprofile-use=/tmp/ivm.profdata" bash $R/ivm-repo/ivm/bench/build-x86.sh 6541861f4d033a0de327b5ccc5180ebac20bf461 /opt/b/eng > $O/build.log 2>&1; then
+          if ! PKG_CONFIG_PATH=$(cat /tmp/npc.txt):/usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig IVM_MESON=1 CC="$NDKB/clang --gcc-toolchain=/usr" CXX="$NDKB/clang++ --gcc-toolchain=/usr" CFLAGS="$PGOF -I/usr/local/include" LDFLAGS="-fprofile-use=/tmp/ivm.profdata -L/usr/local/lib -L/usr/local/lib64 -L/usr/lib/x86_64-linux-gnu" bash $R/ivm-repo/ivm/bench/build-x86.sh 6541861f4d033a0de327b5ccc5180ebac20bf461 /opt/b/eng > $O/build.log 2>&1; then
             echo "=== ENGINE BUILD FAILED ==="; tail -20 $O/build.log; cp /opt/b/*/src/build/ninja.log $O/ 2>/dev/null; cp /opt/b/*/src/build/meson-logs/meson-log.txt $O/ 2>/dev/null; grep -m40 -B4 -A14 -E "error|Error|ERROR" /opt/b/*/src/build/ninja.log | head -150; exit 1
           fi
           tail -5 $O/build.log
