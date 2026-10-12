@@ -1,0 +1,78 @@
+name: photos-dump
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_uset: { description: 'IVM_USET value to test (empty for default)', default: '' }
+      ivm_ref: { description: 'ivm repo ref', default: 'main' }
+      bin_addrs: { description: 'CAM_BINADDRS (unslid DSC addresses)', default: '1970505d0' }
+      bin_win: { description: 'CAM_BINWIN', default: '0x200' }
+      bin_str: { description: 'CAM_BINSTR', default: '' }
+      bin_range: { description: 'CAM_BINRANGE hexaddr:hexlen', default: '' }
+permissions: { actions: read, contents: read }
+jobs:
+  test:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: Setup and run Photos test
+        env:
+          IVM_PAT: '${{ secrets.IVM_PAT }}'
+          # CAM_PHOTOS lives INSIDE bench.py's CAM_TEST camera block (bench.py:434/483) — without
+          # CAM_TEST=1 the Photos code never runs (run#15: perfect boot, zero photos_* fields).
+          # CAM_SHOT populates the library so the grid has content; CAM_EDITCAM tests the editor.
+          CAM_TEST: '1'
+          CAM_PHOTOS: '1'
+          CAM_SHOT: '1'
+          CAM_EDITCAM: '1'
+          IVM_USET: '${{ inputs.ivm_uset }}'
+          CAM_BINADDRS: '${{ inputs.bin_addrs }}'
+          CAM_BINWIN: '${{ inputs.bin_win }}'
+          CAM_BINSTR: '${{ inputs.bin_str }}'
+          CAM_BINRANGE: '${{ inputs.bin_range }}'
+        run: |
+          set -uxo pipefail
+          R=$GITHUB_WORKSPACE; O=$R/bench-out; mkdir -p "$O" /opt/b /opt/vm
+          which bash zstd tar jq || echo "Missing commands!"
+
+          sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev libzstd-dev libpng-dev libjpeg-dev nettle-dev libgmp-dev liblzfse-dev libtasn1-6-dev zlib1g-dev liblz4-dev cmake procps
+          # Inferno's meson.build hard-requires nettle >=3.10 (meson.build:1758) when --enable-nettle;
+          # ubuntu-24.04-arm ships 3.9.1 (ios-boot-test only passes because trixie's container has 3.10.1).
+          # Build 3.10.1 into /usr/local: same soname (libnettle.so.8), pkg-config prefers /usr/local.
+          curl -fsSL https://ftpmirror.gnu.org/nettle/nettle-3.10.1.tar.gz | tar -xz -C /tmp
+          cd /tmp/nettle-3.10.1 && ./configure --prefix=/usr/local --disable-documentation >nettle-conf.log && make -j"$(nproc)" >nettle-make.log && sudo make install >/dev/null && sudo ldconfig && cd "$R"
+          echo "nettle now: $(pkg-config --modversion nettle)"
+          pipx install meson==1.7.0 || pip3 install --user meson==1.7.0
+          sudo mkdir -p /home/user/.tokens; printf %s "$IVM_PAT" | sudo tee /home/user/.tokens/github.pat > /dev/null; sudo chmod 644 /home/user/.tokens/github.pat
+          # Download diskset
+          bash $R/ivm-repo/ivm/inferno/gh-release.sh get diskset-setupdone-18A5351d /opt/dl > $O/download.log 2>&1
+          zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS && rm -rf /opt/dl
+          VMD=$(dirname "$(ls /opt/vm/*/entry.json | head -1)"); echo "VM=$VMD"
+          # Build engine (use pinned commit). set -e would skip the tail on failure, so guard it.
+          if ! bash $R/ivm-repo/ivm/bench/build-x86.sh cc4302a99167abec69b714cfd00c38caece7e7de /opt/b/eng > $O/build.log 2>&1; then
+            echo "=== ENGINE BUILD FAILED, build.log tail ==="
+            tail -80 $O/build.log
+            exit 1
+          fi
+          tail -20 $O/build.log
+          # Run Photos test
+          QD=$(ls -d /opt/b/keymaps-* 2>/dev/null | head -1); [ -z "$QD" ] && QD=/tmp/qd && mkdir -p $QD
+          # qemu_find_file(KEYMAP) looks for <datadir>/keymaps/en-us — -L needs the PARENT of
+          # keymaps/ (same as ios-boot-test's /opt/qd wrap); a bare keymaps-<sha> dir exits at VNC open.
+          mkdir -p /opt/qd && rm -rf /opt/qd/keymaps && cp -r "$QD" /opt/qd/keymaps
+          CAM_PHOTOS=1 IVM_USET="$IVM_USET" python3 -u $R/ivm-repo/ivm/bench/bench.py /opt/b/eng /opt/qd "$VMD" "$O" "photos-test" "4" "3G" "512" 2>&1 | tee $O/bench.log
+          echo "=== Photos results ==="
+          grep -E "photos_grid_reached|photos_state|photos_launch_tries" $O/bench.log | tail -5
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: photos-dump-results
+          path: |
+            ${{ github.workspace }}/bench-out/bench.log
+            ${{ github.workspace }}/bench-out/build.log
+            ${{ github.workspace }}/bench-out/result.json
+            ${{ github.workspace }}/bench-out/*.png
+            ${{ github.workspace }}/bench-out/*.txt
+            ${{ github.workspace }}/bench-out/*.b64.txt
+          if-no-files-found: warn
