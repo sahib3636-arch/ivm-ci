@@ -73,6 +73,6 @@ jobs:
             ${{ github.workspace }}/bench-out/build.log
             ${{ github.workspace }}/bench-out/result.json
             ${{ github.workspace }}/bench-out/*.png
-            ${{ github.workspace }}/bench-out/*.txt
-            ${{ github.workspace }}/bench-out/*.b64.txt
+            ${{ github.workspace }}/bench-out/**/*.txt
+            ${{ github.workspace }}/bench-out/**/*.b64.txt
           if-no-files-found: warn
