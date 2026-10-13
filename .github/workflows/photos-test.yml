@@ -35,6 +35,7 @@ jobs:
           IVM_ISP_STILLFILL: '1'
           IVM_ISP_P0EVERY: '8'
           NINJA_J: '2'
+          IVM_MESON: '1'
           CAM_EDITCAM: '1'
           IVM_USET: '${{ inputs.ivm_uset }}'
         run: |
