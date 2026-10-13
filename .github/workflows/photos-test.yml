@@ -4,6 +4,7 @@ on:
     inputs:
       ivm_uset: { description: 'IVM_USET value to test (empty for default)', default: '' }
       ivm_ref: { description: 'ivm repo ref', default: 'main' }
+      diskset: { description: 'disk set release tag (diskset-<name>-18A5351d)', default: 'diskset-setupdone-18A5351d' }
 permissions: { actions: read, contents: read }
 jobs:
   test:
@@ -38,7 +39,7 @@ jobs:
           pipx install meson==1.7.0 || pip3 install --user meson==1.7.0
           sudo mkdir -p /home/user/.tokens; printf %s "$IVM_PAT" | sudo tee /home/user/.tokens/github.pat > /dev/null; sudo chmod 644 /home/user/.tokens/github.pat
           # Download diskset
-          bash $R/ivm-repo/ivm/inferno/gh-release.sh get diskset-setupdone-18A5351d /opt/dl > $O/download.log 2>&1
+          bash $R/ivm-repo/ivm/inferno/gh-release.sh get "${{ inputs.diskset }}" /opt/dl > $O/download.log 2>&1
           zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS && rm -rf /opt/dl
           VMD=$(dirname "$(ls /opt/vm/*/entry.json | head -1)"); echo "VM=$VMD"
           # Build engine (use pinned commit). set -e would skip the tail on failure, so guard it.
