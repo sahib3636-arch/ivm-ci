@@ -8,6 +8,7 @@ on:
       base: { description: 'Inferno commit to build', default: '6541861f4d033a0de327b5ccc5180ebac20bf461' }
       patches: { description: 'IVM_PATCHES list (empty = none)', default: 'ispstub ktrace' }
       cc: { description: 'gcc | clang', default: 'gcc' }
+      meson: { description: '1 = phone meson option set (IVM_MESON)', default: '0' }
 permissions: { actions: read, contents: read }
 jobs:
   test:
@@ -39,6 +40,7 @@ jobs:
           IVM_ISP_P0EVERY: '8'
           NINJA_J: '2'
           CC_OVERRIDE: '${{ inputs.cc }}'
+          IVM_MESON: "${{ inputs.meson == '1' && '1' || '' }}"
           CAM_EDITCAM: '1'
           IVM_USET: '${{ inputs.ivm_uset }}'
         run: |
