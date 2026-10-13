@@ -27,7 +27,7 @@ jobs:
           CAM_SHOT: '1'
           # s41 experiment: phone-identical engine. Base 6541861f + the 4.0.52 patch list (ispstub = Camera icon/ISP),
           # plus the cameraEnv the phone uses (Inferno.kt cameraEnv). Without ispstub the Camera icon is missing.
-          IVM_PATCHES: '${{ inputs.patches }}'
+          IVM_PATCHES: "${{ inputs.patches == 'none' && '' || inputs.patches }}"
           IVM_ISP: '1'
           IVM_ISP_LOG: '0'
           IVM_ISP_FEED_TEST: '1'
