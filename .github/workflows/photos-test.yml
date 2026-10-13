@@ -24,7 +24,7 @@ jobs:
           CAM_SHOT: '1'
           # s41 experiment: phone-identical engine. Base 6541861f + the 4.0.52 patch list (ispstub = Camera icon/ISP),
           # plus the cameraEnv the phone uses (Inferno.kt cameraEnv). Without ispstub the Camera icon is missing.
-          IVM_PATCHES: 'panelhz android-perf fpslog hle-bilerp hle-nn inljc jcttbr0 fpixc fpixc_host fpzero fpden nobti jcbits14 asidlog cflagsinline jclog gxfinline zvainline adpdirty tlbrange vtlb16 a13-ipi-replay haltpoll jcshared hle-lb hle-r3 hle-sob hle-zva hle-bq tbfollow tbfollow2 tbfollow3 tbfollow4 zdiscard jitdiscard tbarray ucdyn ispstub ktrace'
+          IVM_PATCHES: 'ispstub ktrace'
           IVM_ISP: '1'
           IVM_ISP_LOG: '0'
           IVM_ISP_FEED_TEST: '1'
@@ -35,7 +35,7 @@ jobs:
           IVM_ISP_STILLFILL: '1'
           IVM_ISP_P0EVERY: '8'
           NINJA_J: '2'
-          IVM_MESON: '1'
+          CC_OVERRIDE: 'gcc'
           CAM_EDITCAM: '1'
           IVM_USET: '${{ inputs.ivm_uset }}'
         run: |
@@ -43,7 +43,7 @@ jobs:
           R=$GITHUB_WORKSPACE; O=$R/bench-out; mkdir -p "$O" /opt/b /opt/vm
           which bash zstd tar jq || echo "Missing commands!"
 
-          sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build clang-18 llvm-18 pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev libzstd-dev libpng-dev libjpeg-dev nettle-dev libgmp-dev liblzfse-dev libtasn1-6-dev zlib1g-dev liblz4-dev cmake procps
+          sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev libzstd-dev libpng-dev libjpeg-dev nettle-dev libgmp-dev liblzfse-dev libtasn1-6-dev zlib1g-dev liblz4-dev cmake procps
           # Inferno's meson.build hard-requires nettle >=3.10 (meson.build:1758) when --enable-nettle;
           # ubuntu-24.04-arm ships 3.9.1 (ios-boot-test only passes because trixie's container has 3.10.1).
           # Build 3.10.1 into /usr/local: same soname (libnettle.so.8), pkg-config prefers /usr/local.
@@ -57,11 +57,7 @@ jobs:
           zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS && rm -rf /opt/dl
           VMD=$(dirname "$(ls /opt/vm/*/entry.json | head -1)"); echo "VM=$VMD"
           # Build engine (use pinned commit). set -e would skip the tail on failure, so guard it.
-          # s41: phone recipe = PGO. Merge the repo's explore-pgoapp profiles (same as ivm-apk.yml), then build with them.
-          PGOD=$O/pgo-raw; rm -rf "$PGOD"; mkdir -p "$PGOD"; unzip -q "$R/ivm-repo/ivm/android/ci/pgo/explore-pgoapp.zip" -d "$PGOD"
-          llvm-profdata-18 merge -o "$O/ivm.profdata" $(find "$PGOD" -name '*.profraw') && export IVM_PROFDATA="$O/ivm.profdata"
-          echo "profdata: $(ls -la $O/ivm.profdata 2>/dev/null)"; rm -rf "$PGOD"
-          if ! bash $R/ivm-repo/ivm/bench/build-x86.sh 6541861f4d033a0de327b5ccc5180ebac20bf461 /opt/b/eng > $O/build.log 2>&1; then
+          if ! bash $R/ivm-repo/ivm/bench/build-x86.sh cc4302a99167abec69b714cfd00c38caece7e7de /opt/b/eng > $O/build.log 2>&1; then
             echo "=== ENGINE BUILD FAILED, build.log tail ==="
             tail -80 $O/build.log
             exit 1
