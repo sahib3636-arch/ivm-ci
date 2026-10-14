@@ -33,6 +33,7 @@ jobs:
           IVM_ISP_LOG: '0'
           IVM_ISP_FEED_TEST: '1'
           IVM_ISP_FEED: '/opt/b/isp-feed.bin'
+          BOOTARGS_ADD: 'camLoggingUsePrintf=1,camLogging=0xffffffff,camEnableAneIsp=0'
           IVM_SLIDEPC: 'fffffff007b1901c'
           IVM_LOCKFIX: '18bd24cd8,20,-4'
           IVM_USKIP: '1c2824adc/1d722c694,1c2824f84/1d722c694'
