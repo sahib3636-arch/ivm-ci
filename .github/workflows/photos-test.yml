@@ -41,6 +41,7 @@ jobs:
           NINJA_J: '2'
           CC_OVERRIDE: '${{ inputs.cc }}'
           IVM_MESON: "${{ inputs.meson == '1' && '1' || '' }}"
+          IVM_NRN_SAFE: '1'
           CAM_EDITCAM: '1'
           IVM_USET: '${{ inputs.ivm_uset }}'
         run: |
