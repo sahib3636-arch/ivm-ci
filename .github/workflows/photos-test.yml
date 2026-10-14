@@ -11,6 +11,7 @@ on:
       meson: { description: '1 = phone meson option set (IVM_MESON)', default: '0' }
       cam_shot: { description: '1 = take 2 shots before Photos (library non-empty); 0 = empty library', default: '1' }
       ktrace: { description: '1 = kernel data-abort trap (IVM_KTRACE, s40 notes) for the silent Photos death', default: '0' }
+      photos_via: { description: "'' = Photos icon/Spotlight; viewer = open Photos from the Camera thumbnail", default: '' }
 permissions: { actions: read, contents: read }
 jobs:
   test:
@@ -35,6 +36,7 @@ jobs:
           CAM_TEST: '1'
           CAM_PHOTOS: '1'
           CAM_SHOT: "${{ inputs.cam_shot }}"
+          PHOTOS_VIA: "${{ inputs.photos_via }}"
           # s41 experiment: phone-identical engine. Base 6541861f + the 4.0.52 patch list (ispstub = Camera icon/ISP),
           # plus the cameraEnv the phone uses (Inferno.kt cameraEnv). Without ispstub the Camera icon is missing.
           IVM_PATCHES: "${{ inputs.patches == 'none' && ' ' || inputs.patches }}"
