@@ -45,7 +45,11 @@ jobs:
           IVM_MESON: "${{ inputs.meson == '1' && '1' || '' }}"
           IVM_NRN_SAFE: '1'
           CAM_EDITCAM: '1'
-          IVM_USET: '${{ inputs.ivm_uset }}'
+          # s42: phone-identical camera/Photos env (Inferno.kt PHOTO_USET + UTRACE). Without IVM_USET the shutter
+          # never writes a photo (isp60: Camera asks for HEVC -> no still) and Photos has no thumbnails.
+          IVM_USET: "${{ inputs.ivm_uset != '' && inputs.ivm_uset || '18bcf9b64:8=0,1c2918af0:0=1,1a8073be0:0=0,18c250eb0:0=1,18b9c08a4:8=1,18c25454c:1=3000000,19d2638d8:0=0/2,19d261b2c:32=19d261b34/23,19cd2f024:32=19cd2f028/20' }}"
+          IVM_UTRACE: '1801953f0'
+          IVM_UTRACE_BT: '1'
         run: |
           set -uxo pipefail
           R=$GITHUB_WORKSPACE; O=$R/bench-out; mkdir -p "$O" /opt/b /opt/vm
