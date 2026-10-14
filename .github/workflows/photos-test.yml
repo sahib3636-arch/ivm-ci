@@ -31,7 +31,7 @@ jobs:
           IVM_PATCHES: "${{ inputs.patches == 'none' && ' ' || inputs.patches }}"
           IVM_ISP: '1'
           IVM_ISP_LOG: '0'
-          IVM_ISP_FEED_TEST: '1'
+          IVM_ISP_FEED_TEST: '2'
           IVM_ISP_FEED: '/opt/b/isp-feed.bin'
           BOOTARGS_ADD: 'camLoggingUsePrintf=1,camLogging=0xffffffff,camEnableAneIsp=0'
           IVM_SLIDEPC: 'fffffff007b1901c'
