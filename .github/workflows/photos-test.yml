@@ -13,6 +13,7 @@ on:
       ktrace: { description: '1 = kernel data-abort trap (IVM_KTRACE, s40 notes) for the silent Photos death', default: '0' }
       photos_via: { description: "'' = Photos icon/Spotlight; viewer = open Photos from the Camera thumbnail", default: '' }
       photos_launch: { description: "'' = Photos home-icon tap (E13 config, reproduces the crash); spotlight = Spotlight search", default: '' }
+      binaddrs: { description: 'comma-separated unslid dsc addresses to dump as code windows (CAM_BINADDRS)', default: '' }
 permissions: { actions: read, contents: read }
 jobs:
   test:
@@ -39,6 +40,7 @@ jobs:
           CAM_SHOT: "${{ inputs.cam_shot }}"
           PHOTOS_VIA: "${{ inputs.photos_via }}"
           PHOTOS_LAUNCH: "${{ inputs.photos_launch }}"
+          CAM_BINADDRS: "${{ inputs.binaddrs }}"
           # s41 experiment: phone-identical engine. Base 6541861f + the 4.0.52 patch list (ispstub = Camera icon/ISP),
           # plus the cameraEnv the phone uses (Inferno.kt cameraEnv). Without ispstub the Camera icon is missing.
           IVM_PATCHES: "${{ inputs.patches == 'none' && ' ' || inputs.patches }}"
