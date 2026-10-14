@@ -89,6 +89,7 @@ jobs:
           name: photos-test-results
           path: |
             ${{ github.workspace }}/bench-out/bench.log
+            ${{ github.workspace }}/bench-out/**/serial.log
             ${{ github.workspace }}/bench-out/build.log
             ${{ github.workspace }}/bench-out/result.json
             ${{ github.workspace }}/bench-out/**/*.png
