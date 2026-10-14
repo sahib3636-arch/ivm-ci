@@ -10,6 +10,7 @@ on:
       cc: { description: 'gcc | clang', default: 'gcc' }
       meson: { description: '1 = phone meson option set (IVM_MESON)', default: '0' }
       cam_shot: { description: '1 = take 2 shots before Photos (library non-empty); 0 = empty library', default: '1' }
+      ktrace: { description: '1 = kernel data-abort trap (IVM_KTRACE, s40 notes) for the silent Photos death', default: '0' }
 permissions: { actions: read, contents: read }
 jobs:
   test:
@@ -18,6 +19,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: Optional kernel trap (s42)
+        if: ${{ inputs.ktrace == '1' }}
+        run: |
+          echo "IVM_KTRACE=fffffff007b569a0,fffffff007b57734" >> $GITHUB_ENV
+          echo "IVM_KTRACE_SAVE=fffffff007b569a0" >> $GITHUB_ENV
+          echo "IVM_KTRACE_SS=1" >> $GITHUB_ENV
+          echo "IVM_KTRACE_N=200" >> $GITHUB_ENV
       - name: Setup and run Photos test
         env:
           IVM_PAT: '${{ secrets.IVM_PAT }}'
