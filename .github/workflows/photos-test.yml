@@ -60,6 +60,7 @@ jobs:
           IVM_MESON: "${{ inputs.meson == '1' && '1' || '' }}"
           IVM_NRN_SAFE: '1'
           CAM_EDITCAM: '1'
+          PHOTOS_WAIT: '90'   # s44: wait for ingestion before the icon launch
           RAM_GREP: '1'   # s44: grep guest RAM for IMG_/DCIM/Photos.sqlite after the shots
           # s42: phone-identical camera/Photos env (Inferno.kt PHOTO_USET + UTRACE). Without IVM_USET the shutter
           # never writes a photo (isp60: Camera asks for HEVC -> no still) and Photos has no thumbnails.
