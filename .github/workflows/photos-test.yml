@@ -107,6 +107,8 @@ jobs:
             ${{ github.workspace }}/bench-out/**/serial.log
             ${{ github.workspace }}/bench-out/**/dscwin.*
             ${{ github.workspace }}/bench-out/build.log
+            ${{ github.workspace }}/bench-out/**/dbcheck.txt
+            ${{ github.workspace }}/bench-out/**/*.png
             ${{ github.workspace }}/bench-out/result.json
             ${{ github.workspace }}/bench-out/**/*.png
           if-no-files-found: warn
