@@ -42,6 +42,8 @@ jobs:
           SMP_B: '${{ matrix.v.smpb }}'
           BTN_TEST: '${{ matrix.v.btn }}'
           TB_B: '${{ matrix.v.tbb }}'
+          THREAD: '${{ matrix.v.thread }}'
+          THREAD_B: '${{ matrix.v.threadb }}'
           MACHINE_B: '${{ matrix.v.machineb }}'
           BOOTARGS_SUB: '${{ matrix.v.bootsub }}'
           BENCH_ENV: '${{ matrix.v.benv }}'
