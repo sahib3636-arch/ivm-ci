@@ -44,6 +44,8 @@ jobs:
           TB_B: '${{ matrix.v.tbb }}'
           THREAD: '${{ matrix.v.thread }}'
           THREAD_B: '${{ matrix.v.threadb }}'
+          A11Y: '${{ matrix.v.a11y }}'
+          A11Y_B: '${{ matrix.v.a11yb }}'
           MACHINE_B: '${{ matrix.v.machineb }}'
           BOOTARGS_SUB: '${{ matrix.v.bootsub }}'
           BENCH_ENV: '${{ matrix.v.benv }}'
