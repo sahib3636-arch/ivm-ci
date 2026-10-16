@@ -1,6 +1,7 @@
 # Source of truth for ivm-ci/.github/workflows/engine.yml — build an Android engine VARIANT (compiler/PGO experiments).
 # Artifact: android-native-<variant>  (work/out: jniLibs + qemu-data + debug/libinferno.so unstripped)
 name: engine
+run-name: 'engine / ${{ inputs.variant }}'
 on:
   workflow_dispatch:
     inputs:
@@ -10,7 +11,7 @@ on:
       ldflags: { description: 'extra link flags', default: '' }
       meson: { description: 'extra meson options', default: '' }
       patches: { description: 'space-separated ivm/inferno/patches/exp/<name>.py to apply', default: '' }
-      pgo_art: { description: 'artifact with pgo/*.profraw to merge + -fprofile-use (empty = none)', default: '' }
+      pgo_art: { description: 'comma-separated verified profile-training artifact names (empty = none)', default: '' }
       ivm_ref: { default: 'main' }
 permissions: { actions: read, contents: read }
 jobs:
@@ -25,19 +26,15 @@ jobs:
       - name: PGO profile
         if: inputs.pgo_art != ''
         env: { GH_TOKEN: '${{ github.token }}', ART: '${{ inputs.pgo_art }}' }
-        run: |
-          id=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ART&per_page=1" | jq -r '.artifacts[0].id')
-          curl -sL -H "Authorization: Bearer $GH_TOKEN" -o p.zip "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip"
-          mkdir -p pgo && cd pgo && unzip -q ../p.zip && find . -name '*.profraw' | head
-          # raw profiles are toolchain-version specific: merge with the SAME NDK the build uses (build script: ANDROID_NDK_HOME first)
-          PD=${ANDROID_NDK_HOME:-$ANDROID_NDK_LATEST_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-profdata; $PD --version | head -2
-          $PD merge -o "$GITHUB_WORKSPACE/ivm.profdata" $(find . -name '*.profraw')
-          ls -la "$GITHUB_WORKSPACE/ivm.profdata"
-          echo "IVM_PROFDATA=$GITHUB_WORKSPACE/ivm.profdata" >> "$GITHUB_ENV"
+        run: python3 ivm-repo/ivm/bench/merge_pgo.py "$GITHUB_WORKSPACE/ivm.profdata"
       - name: cross-build
         working-directory: ivm-repo
         env: { INFERNO_COMMIT: '${{ inputs.commit }}', IVM_OPT_CFLAGS: '${{ inputs.cflags }}', IVM_LDFLAGS: '${{ inputs.ldflags }}', IVM_MESON_EXTRA: '${{ inputs.meson }}', IVM_PATCHES: '${{ inputs.patches }}' }
         run: bash ivm/android/ci/build-inferno-android.sh 2>&1 | tee native.log; test "${PIPESTATUS[0]}" = 0
+      - name: record build provenance
+        working-directory: ivm-repo
+        env: { VARIANT: '${{ inputs.variant }}', INFERNO_COMMIT: '${{ inputs.commit }}', IVM_OPT_CFLAGS: '${{ inputs.cflags }}', IVM_LDFLAGS: '${{ inputs.ldflags }}', IVM_MESON_EXTRA: '${{ inputs.meson }}', IVM_PATCHES: '${{ inputs.patches }}' }
+        run: python3 ivm/bench/build_manifest.py "$PWD"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
