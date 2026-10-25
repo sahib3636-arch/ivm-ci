@@ -1,0 +1,180 @@
+# iVM APK build — runs in the PUBLIC ivm-ci so it costs no private-repo Actions minutes.
+#
+# Port of ivm/.github/workflows/ivm-apk.yml. Differences, all deliberate:
+#  * the source repo is checked out into `ivm-repo/` (never this repo's own tree), via IVM_PAT,
+#    because sahib3636-arch/ivm is private and this repo is not;
+#  * every path is prefixed with ivm-repo/ (including the hashFiles() cache keys);
+#  * the release is published to sahib3636-arch/ivm, so publishing needs IVM_PAT (contents:write),
+#    not github.token — github.token can only write to THIS repo;
+#  * version numbers are explicit inputs. In ivm-apk.yml they were derived from the run number
+#    (4.0.(run+5), versionCode 150+run). Run numbers restart at 1 in this repo, which would
+#    produce a versionCode far BELOW the installed app and Android would refuse the upgrade.
+#    Defaults continue the sequence after 4.0.81 (versionCode 226) — bump them per build.
+name: apk
+on:
+  workflow_dispatch:
+    inputs:
+      publish:  { description: 'upload to Gofile + release note (yes|no)', default: 'yes' }
+      ivm_ref:  { description: 'branch/tag of sahib3636-arch/ivm to build', default: 'perf/e64-pgo-20261016' }
+      version_name: { description: 'versionName', default: '4.0.82' }
+      version_code: { description: 'versionCode (must exceed the installed one)', default: '227' }
+      patches:  { description: 'IVM_PATCHES override (empty = the list below)', default: '' }
+permissions: { contents: read }
+concurrency:
+  group: apk-${{ github.ref }}-${{ inputs.version_name }}
+  cancel-in-progress: false
+env:
+  APP: ivm-repo/ivm/lab/m6/apk/ivm-app
+  SRC: sahib3636-arch/ivm
+  # s45/E111-E113 engine: base 6541861f + the 40 champion patches + kexit/cntfast/nohardening/
+  # tlbsz10/cpregcache (E111) + panelwh (E112) + shmfb (E113). Keep in one place; the cache key
+  # below does not hash this line, so changing it must be paired with a key change.
+  DEFAULT_PATCHES: >-
+    panelhz android-perf fpslog hle-bilerp hle-nn inljc jcttbr0 fpixc fpixc_host fpzero fpden
+    nobti jcbits14 asidlog cflagsinline jclog gxfinline zvainline adpdirty tlbrange vtlb16
+    a13-ipi-replay haltpoll jcshared hle-lb hle-r3 hle-sob hle-zva hle-bq tbfollow tbfollow2
+    tbfollow3 tbfollow4 zdiscard jitdiscard tbarray ucdyn ispstub ktrace monitor-watch-cleanup
+    kexit cntfast nohardening tlbsz10 cpregcache panelwh shmfb
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: work/out
+          key: android-native-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/android/*.patch', 'ivm-repo/ivm/inferno/patches/displaypipe-vblank.py', 'ivm-repo/ivm/inferno/patches/mt-spi-edge.py', 'ivm-repo/ivm/inferno/patches/vendor/**', 'ivm-repo/ivm/inferno/patches/legacy-6541/**', 'ivm-repo/ivm/inferno/patches/exp/ktrace.py', 'ivm-repo/ivm/inferno/patches/exp/ktrace_u.c') }}-${{ inputs.patches != '' && 'custom' || 'default' }}
+      - name: host packages
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build patchelf python3-venv pkg-config cmake gcc && pipx install meson==1.7.0
+      - name: merge PGO profile (explore-e64train, NDK llvm-profdata)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          W=$GITHUB_WORKSPACE/pgo-raw; rm -rf "$W"; mkdir -p "$W"
+          unzip -q ivm-repo/ivm/android/ci/pgo/explore-e64train.zip -d "$W"
+          PD=${ANDROID_NDK_HOME:-$ANDROID_NDK_LATEST_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-profdata
+          $PD --version | head -2
+          $PD merge -o "$GITHUB_WORKSPACE/ivm.profdata" $(find "$W" -name '*.profraw')
+          echo "IVM_PROFDATA=$GITHUB_WORKSPACE/ivm.profdata" >> "$GITHUB_ENV"
+      - name: build Inferno for Android arm64
+        if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: ivm-repo
+        env:
+          INFERNO_COMMIT: "6541861f4d033a0de327b5ccc5180ebac20bf461"
+          IVM_OPT_CFLAGS: "-O2"
+          IVM_MESON_EXTRA: "-Db_lto=true -Db_lto_mode=thin"
+          IVM_PATCHES: ${{ inputs.patches != '' && inputs.patches || env.DEFAULT_PATCHES }}
+        run: bash ivm/android/ci/build-inferno-android.sh 2>&1 | tee native.log; test "${PIPESTATUS[0]}" = 0
+      - name: engine smoke test (real libinferno.so on qemu-user + Android 14 arm64 bionic)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq qemu-user-static >/dev/null
+          bash work/out/../ivm/android/ci/engine-smoke.sh work/out/jniLibs/arm64-v8a 2>&1 | tee work/out/engine-smoke.log; test "${PIPESTATUS[0]}" = 0
+        working-directory: ivm-repo
+      - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true     # artifact quota must never fail a build
+        with: { name: ivm-native, path: work/out }
+  art-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: enable KVM + free disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/share/swift /usr/local/share/powershell /usr/local/share/chromium /opt/hostedtoolcache/CodeQL || true
+          df -h / | tail -1
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: fixtures (GNU tar --sparse, 32 GiB root)
+        run: |
+          sudo apt-get install -y -qq zstd >/dev/null
+          bash $APP/tools/make-inferno-fixture.sh $APP/app/src/androidTest/assets
+          mv $APP/app/src/androidTest/assets/fx-inferno.tar.gz $APP/app/src/androidTest/assets/fx-inferno.tar.gz.bin
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.14.3' }
+      - name: JVM unit tests
+        working-directory: ${{ env.APP }}
+        run: gradle --no-daemon -Dorg.gradle.jvmargs=-Xmx3g :app:testDebugUnitTest --tests 'dev.ivm.emu.InfernoPlanTest' --tests 'dev.ivm.emu.BootPlanTest' --tests 'dev.ivm.emu.KeymapTest' --tests 'dev.ivm.emu.ShmFbTest'
+      - name: import tests on ART (API 34 x86_64, R8-minified artTest build)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          working-directory: ${{ env.APP }}
+          script: bash tools/ci-art-test.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: ivm-test-reports
+          path: |
+            ${{ env.APP }}/app/build/reports
+            ${{ env.APP }}/app/build/outputs/androidTest-results
+            /tmp/art-logcat.txt
+  apk:
+    needs: [native, art-test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      # The engine comes from the actions cache (the key the native job saved), not from an
+      # artifact: artifact storage is quota-limited and a quota miss must not break the APK.
+      - uses: actions/cache/restore@v4
+        with:
+          path: work/out
+          key: android-native-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/android/*.patch', 'ivm-repo/ivm/inferno/patches/displaypipe-vblank.py', 'ivm-repo/ivm/inferno/patches/mt-spi-edge.py', 'ivm-repo/ivm/inferno/patches/vendor/**', 'ivm-repo/ivm/inferno/patches/legacy-6541/**', 'ivm-repo/ivm/inferno/patches/exp/ktrace.py', 'ivm-repo/ivm/inferno/patches/exp/ktrace_u.c') }}-${{ inputs.patches != '' && 'custom' || 'default' }}
+          fail-on-cache-miss: true
+      - name: stage engines
+        run: |
+          M=$APP/app/src/main; J=$M/jniLibs/arm64-v8a; mkdir -p $J $M/assets
+          cp -r work/out/jniLibs/arm64-v8a/. $J/
+          cp -r work/out/assets/qemu-data $M/assets/
+          ls -la $J $M/assets/qemu-data
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.14.3' }
+      - name: assembleRelease
+        working-directory: ${{ env.APP }}
+        env:
+          IVM_VERSION_CODE: ${{ inputs.version_code }}
+          IVM_VERSION_NAME: ${{ inputs.version_name }}
+        run: gradle --no-daemon -Dorg.gradle.jvmargs=-Xmx3g assembleRelease
+      - name: verify signature + engine
+        run: |
+          set -e
+          A=$(find $APP/app/build/outputs/apk/release -name '*.apk' | head -1); N=/tmp/iVM-${{ inputs.version_name }}.apk; cp "$A" "$N"
+          unzip -l /tmp/$N | grep -E 'lib/arm64-v8a/(libinferno|libzstd-jni|libglib)'
+          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner verify --verbose --print-certs /tmp/$N | tee /tmp/apksig.txt | head -6
+          grep -q "v3 scheme.*true" /tmp/apksig.txt || { echo "APK is NOT signed with v3 scheme"; exit 1; }
+          echo "APK=/tmp/$N" >> $GITHUB_ENV
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with: { name: ivm-apk, path: '${{ env.APK }}' }
+      - name: publish (Gofile + release note on the source repo)
+        if: inputs.publish == 'yes'
+        env:
+          GH_TOKEN: '${{ secrets.IVM_PAT }}'   # must be able to write releases on $SRC, not just read
+        run: |
+          set -e
+          R=$(curl -s -F "file=@$APK" https://upload.gofile.io/uploadfile); echo "$R" | head -c 400; echo
+          LINK=$(echo "$R" | jq -r .data.downloadPage); MD5=$(md5sum "$APK" | cut -d' ' -f1); SZ=$(stat -c%s "$APK")
+          [ "$(echo "$R" | jq -r .data.md5)" = "$MD5" ] || { echo "gofile md5 mismatch"; exit 1; }
+          BODY="$(basename $APK) | $SZ B | md5 $MD5 | $LINK | ivm ${GITHUB_SHA::7} | apk run ${{ github.run_id }}"
+          echo "$BODY" | tee -a $GITHUB_STEP_SUMMARY
+          H=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json")
+          id=$(curl -s "${H[@]}" https://api.github.com/repos/$SRC/releases/tags/ivm-apk-latest | jq -r '.id // empty')
+          [ -n "$id" ] || id=$(curl -s "${H[@]}" -X POST https://api.github.com/repos/$SRC/releases -d '{"tag_name":"ivm-apk-latest","name":"ivm-apk-latest","prerelease":true,"body":"-"}' | jq -r .id)
+          jq -n --arg b "$BODY" '{body:$b}' | curl -s "${H[@]}" -X PATCH https://api.github.com/repos/$SRC/releases/$id -d @- >/dev/null
