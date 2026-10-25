@@ -45,7 +45,7 @@ jobs:
       - id: cache
         uses: actions/cache@v4
         with:
-          path: work/out
+          path: ivm-repo/work/out
           key: android-native-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/android/*.patch', 'ivm-repo/ivm/inferno/patches/displaypipe-vblank.py', 'ivm-repo/ivm/inferno/patches/mt-spi-edge.py', 'ivm-repo/ivm/inferno/patches/vendor/**', 'ivm-repo/ivm/inferno/patches/legacy-6541/**', 'ivm-repo/ivm/inferno/patches/exp/ktrace.py', 'ivm-repo/ivm/inferno/patches/exp/ktrace_u.c') }}-${{ inputs.patches != '' && 'custom' || 'default' }}
       - name: host packages
         if: steps.cache.outputs.cache-hit != 'true'
@@ -71,14 +71,14 @@ jobs:
         run: bash ivm/android/ci/build-inferno-android.sh 2>&1 | tee native.log; test "${PIPESTATUS[0]}" = 0
       - name: engine smoke test (real libinferno.so on qemu-user + Android 14 arm64 bionic)
         if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: ivm-repo
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq qemu-user-static >/dev/null
-          bash work/out/../ivm/android/ci/engine-smoke.sh work/out/jniLibs/arm64-v8a 2>&1 | tee work/out/engine-smoke.log; test "${PIPESTATUS[0]}" = 0
-        working-directory: ivm-repo
+          bash ivm/android/ci/engine-smoke.sh work/out/jniLibs/arm64-v8a 2>&1 | tee work/out/engine-smoke.log; test "${PIPESTATUS[0]}" = 0
       - uses: actions/upload-artifact@v4
         if: always()
         continue-on-error: true     # artifact quota must never fail a build
-        with: { name: ivm-native, path: work/out }
+        with: { name: ivm-native, path: ivm-repo/work/out }
   art-test:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -133,14 +133,14 @@ jobs:
       # artifact: artifact storage is quota-limited and a quota miss must not break the APK.
       - uses: actions/cache/restore@v4
         with:
-          path: work/out
+          path: ivm-repo/work/out
           key: android-native-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/android/*.patch', 'ivm-repo/ivm/inferno/patches/displaypipe-vblank.py', 'ivm-repo/ivm/inferno/patches/mt-spi-edge.py', 'ivm-repo/ivm/inferno/patches/vendor/**', 'ivm-repo/ivm/inferno/patches/legacy-6541/**', 'ivm-repo/ivm/inferno/patches/exp/ktrace.py', 'ivm-repo/ivm/inferno/patches/exp/ktrace_u.c') }}-${{ inputs.patches != '' && 'custom' || 'default' }}
           fail-on-cache-miss: true
       - name: stage engines
         run: |
           M=$APP/app/src/main; J=$M/jniLibs/arm64-v8a; mkdir -p $J $M/assets
-          cp -r work/out/jniLibs/arm64-v8a/. $J/
-          cp -r work/out/assets/qemu-data $M/assets/
+          cp -r ivm-repo/work/out/jniLibs/arm64-v8a/. $J/
+          cp -r ivm-repo/work/out/assets/qemu-data $M/assets/
           ls -la $J $M/assets/qemu-data
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
