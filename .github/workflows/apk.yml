@@ -156,10 +156,10 @@ jobs:
         run: |
           set -e
           A=$(find $APP/app/build/outputs/apk/release -name '*.apk' | head -1); N=/tmp/iVM-${{ inputs.version_name }}.apk; cp "$A" "$N"
-          unzip -l /tmp/$N | grep -E 'lib/arm64-v8a/(libinferno|libzstd-jni|libglib)'
-          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner verify --verbose --print-certs /tmp/$N | tee /tmp/apksig.txt | head -6
+          unzip -l "$N" | grep -E 'lib/arm64-v8a/(libinferno|libzstd-jni|libglib)'
+          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner verify --verbose --print-certs "$N" | tee /tmp/apksig.txt | head -6
           grep -q "v3 scheme.*true" /tmp/apksig.txt || { echo "APK is NOT signed with v3 scheme"; exit 1; }
-          echo "APK=/tmp/$N" >> $GITHUB_ENV
+          echo "APK=$N" >> $GITHUB_ENV
       - uses: actions/upload-artifact@v4
         continue-on-error: true
         with: { name: ivm-apk, path: '${{ env.APK }}' }
