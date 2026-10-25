@@ -174,7 +174,7 @@ jobs:
           R=$(curl -s -F "file=@$APK" https://upload.gofile.io/uploadfile); echo "$R" | head -c 400; echo
           LINK=$(echo "$R" | jq -r .data.downloadPage); MD5=$(md5sum "$APK" | cut -d' ' -f1); SZ=$(stat -c%s "$APK")
           [ "$(echo "$R" | jq -r .data.md5)" = "$MD5" ] || { echo "gofile md5 mismatch"; exit 1; }
-          BODY="$(basename $APK) | $SZ B | md5 $MD5 | $LINK | ivm $IVM_SHA (${inputs.ivm_ref}) | apk run ${{ github.run_id }}"
+          BODY="$(basename $APK) | $SZ B | md5 $MD5 | $LINK | ivm $IVM_SHA (${{ inputs.ivm_ref }}) | apk run ${{ github.run_id }}"
           echo "$BODY" | tee -a $GITHUB_STEP_SUMMARY
           H=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json")
           id=$(curl -s "${H[@]}" https://api.github.com/repos/$SRC/releases/tags/ivm-apk-latest | jq -r '.id // empty')
