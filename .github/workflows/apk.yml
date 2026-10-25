@@ -34,7 +34,7 @@ env:
     nobti jcbits14 asidlog cflagsinline jclog gxfinline zvainline adpdirty tlbrange vtlb16
     a13-ipi-replay haltpoll jcshared hle-lb hle-r3 hle-sob hle-zva hle-bq tbfollow tbfollow2
     tbfollow3 tbfollow4 zdiscard jitdiscard tbarray ucdyn ispstub ktrace monitor-watch-cleanup
-    kexit cntfast nohardening tlbsz10 cpregcache panelwh shmfb
+    kexit cntfast nohardening tlbsz10 cpregcache panelwh shmfb paneladapt
 jobs:
   native:
     runs-on: ubuntu-24.04
@@ -51,7 +51,9 @@ jobs:
           # work live — so a patch change restored a stale binary and the "fix" never ran on the phone
           # (4.0.83 and 4.0.85 restored the same f78207cb… both times). It also did not include this
           # workflow, so changing DEFAULT_PATCHES kept the old engine too. Hash the lot.
-          key: android-native-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/**', '.github/workflows/apk.yml') }}
+          # 'custom' keeps a one-off patch list (inputs.patches) out of the default key: an engine built
+          # for an experiment must never be the engine a normal build restores.
+          key: android-native-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/**', '.github/workflows/apk.yml') }}-${{ inputs.patches != '' && 'custom' || 'default' }}
       - name: host packages
         if: steps.cache.outputs.cache-hit != 'true'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build patchelf python3-venv pkg-config cmake gcc && pipx install meson==1.7.0
@@ -144,7 +146,9 @@ jobs:
           # work live — so a patch change restored a stale binary and the "fix" never ran on the phone
           # (4.0.83 and 4.0.85 restored the same f78207cb… both times). It also did not include this
           # workflow, so changing DEFAULT_PATCHES kept the old engine too. Hash the lot.
-          key: android-native-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/**', '.github/workflows/apk.yml') }}
+          # 'custom' keeps a one-off patch list (inputs.patches) out of the default key: an engine built
+          # for an experiment must never be the engine a normal build restores.
+          key: android-native-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/**', '.github/workflows/apk.yml') }}-${{ inputs.patches != '' && 'custom' || 'default' }}
           fail-on-cache-miss: true
       - name: stage engines
         run: |
