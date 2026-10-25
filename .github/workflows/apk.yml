@@ -169,10 +169,12 @@ jobs:
           GH_TOKEN: '${{ secrets.IVM_PAT }}'   # must be able to write releases on $SRC, not just read
         run: |
           set -e
+          # GITHUB_SHA here is ivm-ci, which tells a reader nothing about what was built.
+          IVM_SHA=$(git -C ivm-repo rev-parse --short HEAD)
           R=$(curl -s -F "file=@$APK" https://upload.gofile.io/uploadfile); echo "$R" | head -c 400; echo
           LINK=$(echo "$R" | jq -r .data.downloadPage); MD5=$(md5sum "$APK" | cut -d' ' -f1); SZ=$(stat -c%s "$APK")
           [ "$(echo "$R" | jq -r .data.md5)" = "$MD5" ] || { echo "gofile md5 mismatch"; exit 1; }
-          BODY="$(basename $APK) | $SZ B | md5 $MD5 | $LINK | ivm ${GITHUB_SHA::7} | apk run ${{ github.run_id }}"
+          BODY="$(basename $APK) | $SZ B | md5 $MD5 | $LINK | ivm $IVM_SHA (${inputs.ivm_ref}) | apk run ${{ github.run_id }}"
           echo "$BODY" | tee -a $GITHUB_STEP_SUMMARY
           H=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json")
           id=$(curl -s "${H[@]}" https://api.github.com/repos/$SRC/releases/tags/ivm-apk-latest | jq -r '.id // empty')
