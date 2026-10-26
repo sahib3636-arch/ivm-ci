@@ -56,7 +56,7 @@ jobs:
             VMD=$(dirname "$(ls /opt/vm/*/entry.json | head -1)")
             echo "VM=$VMD"
             set -o pipefail
-            IVM_PATCHES="$IVM_PATCHES_RUN" bash $SRC/ivm/bench/build-x86.sh HEAD /opt/b/eng > $O/build-x86.log 2>&1
+            IVM_PATCHES="$IVM_PATCHES_RUN" bash $SRC/ivm/bench/build-x86.sh 6541861f4d033a0de327b5ccc5180ebac20bf461 /opt/b/eng > $O/build-x86.log 2>&1
             if [ ! -x /opt/b/eng ]; then echo "ENGINE_BUILD_FAILED"; tail -60 $O/build-x86.log; exit 1; fi
             set +o pipefail
             ls -lh /opt/b/eng
