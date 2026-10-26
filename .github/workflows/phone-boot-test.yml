@@ -69,13 +69,7 @@ jobs:
             fi
             timeout 900 python3 -u $SRC/ivm/bench/bench.py /opt/b/eng /opt/qd "$VMD" "$O" "photos-ci" "4" "4G" "1024" 2>&1 | tee $O/boot.log | tail -40
             if [ "$IVM_SHM" = on ]; then
-              python3 - "$O/shmfb.bin" > $O/shm-header.txt 2>&1 <<PYEOF
-import struct, sys
-b = open(sys.argv[1], "rb").read(4096)
-magic, ver, w, h, stride, poff, flags, _r = struct.unpack_from("<8I", b, 0)
-seq, dirty = struct.unpack_from("<QQ", b, 32)
-print("magic=%#x ver=%d %dx%d stride=%d pixels_off=%d flags=%d seq=%d dirty_px=%d" % (magic, ver, w, h, stride, poff, flags, seq, dirty))
-PYEOF
+              python3 -c "import struct,sys; b=open(sys.argv[1],\"rb\").read(4096); m,v,w,h,st,po,fl,_=struct.unpack_from(\"<8I\",b,0); seq,dpx=struct.unpack_from(\"<QQ\",b,32); print(\"magic=%#x ver=%d %dx%d stride=%d pixels_off=%d flags=%d seq=%d dirty_px=%d\"%(m,v,w,h,st,po,fl,seq,dpx))" "$O/shmfb.bin" > $O/shm-header.txt 2>&1
               cat $O/shm-header.txt
             fi
             grep -q "home settled" $O/boot.log && echo "BOOT_OK" || echo "BOOT_FAIL"
