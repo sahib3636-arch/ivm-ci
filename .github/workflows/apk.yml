@@ -33,7 +33,7 @@ env:
     panelhz android-perf fpslog hle-bilerp hle-nn inljc jcttbr0 fpixc fpixc_host fpzero fpden
     nobti jcbits14 asidlog cflagsinline jclog gxfinline zvainline adpdirty tlbrange vtlb16
     a13-ipi-replay haltpoll jcshared hle-lb hle-r3 hle-sob hle-zva hle-bq tbfollow tbfollow2
-    tbfollow3 tbfollow4 zdiscard jitdiscard tbarray ucdyn ispstub ktrace monitor-watch-cleanup
+    tbfollow3 tbfollow4 zdiscard jitdiscard tbarray ucdyn ispstub ktrace monitor-watch-cleanup teardown-fastexit
     kexit cntfast nohardening tlbsz10 cpregcache panelwh shmfb paneladapt
 jobs:
   native:
