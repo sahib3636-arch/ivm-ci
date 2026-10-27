@@ -6,6 +6,7 @@ on:
       ivm_ref: { description: 'ivm repo ref', default: 'main' }
       bin_addrs: { description: 'CAM_BINADDRS (unslid DSC addresses)', default: '1970505d0' }
       bin_win: { description: 'CAM_BINWIN', default: '0x200' }
+      bin_img: { description: 'CAM_BINIMG: dump the whole dyld image whose name contains this (e.g. libsystem_c)', default: '' }
       bin_str: { description: 'CAM_BINSTR', default: '' }
       bin_range: { description: 'CAM_BINRANGE hexaddr:hexlen', default: '' }
 permissions: { actions: read, contents: read }
@@ -29,6 +30,7 @@ jobs:
           IVM_USET: '${{ inputs.ivm_uset }}'
           CAM_BINADDRS: '${{ inputs.bin_addrs }}'
           CAM_BINWIN: '${{ inputs.bin_win }}'
+          CAM_BINIMG: '${{ inputs.bin_img }}'
           CAM_BINSTR: '${{ inputs.bin_str }}'
           CAM_BINRANGE: '${{ inputs.bin_range }}'
         run: |
