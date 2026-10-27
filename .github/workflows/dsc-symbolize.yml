@@ -86,8 +86,7 @@ jobs:
                       return fo + (v - a), a + sz - v
               return None, 0
           for name, base, n in [("NeutrinoCore", 0x1b7101000, 0x400000), ("NeutrinoKit", 0x1b72fc000, 0x200000),
-                                ("rng-fmt", 0x1ca88b000, 0x4000), ("rng-sel1", 0x1ca13c000, 0x4000), ("rng-sel2", 0x1ca153000, 0x2000),
-                                ("rng-got", 0x1d5f67000, 0x2000)]:
+                                ("rng-desc", 0x1dcef8000, 0x2000), ("rng-fmt", 0x1ca88b000, 0x2000)]:
               fo, avail = va2file(base)
               n = min(n, avail)
               data = d[fo:fo + n]
