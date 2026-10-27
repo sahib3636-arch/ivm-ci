@@ -95,7 +95,7 @@ jobs:
             # s43 kill trace: resolve kernel PCs from THIS run's kernelcache (BRK, data abort, exception_triage,
             # psignal_internal, memorystatus_do_kill, exit1). Prints export lines; eval sets IVM_KTRACE*.
             python3 -m venv /tmp/lzv && /tmp/lzv/bin/pip install -q lzfse
-            eval "$(/tmp/lzv/bin/python3 $R/tools/kernel-trap-pcs.py \"$VMD/kernelcache\" $O/ksym | tee $O/ksym-exports.txt)"
+            eval "$(/tmp/lzv/bin/python3 "$R/ivm-repo/ivm/lab/tools/kernel-trap-pcs.py" "$VMD/kernelcache" "$O/ksym" | tee "$O/ksym-exports.txt")"
             cat $O/ksym/ksyms-pick.txt
           fi
           # Build engine (use pinned commit). set -e would skip the tail on failure, so guard it.
