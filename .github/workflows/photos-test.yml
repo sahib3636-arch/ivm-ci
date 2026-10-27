@@ -13,6 +13,8 @@ on:
       ktrace: { description: '1 = kernel data-abort trap; 2 = also BRK trap; 3 = kill trace (brk+triage+psignal+memorystatus+exit1, PCs from this kernelcache)', default: '0' }
       photos_via: { description: "'' = Photos icon/Spotlight; viewer = open Photos from the Camera thumbnail", default: '' }
       photos_launch: { description: "'' = Photos home-icon tap (E13 config, reproduces the crash); spotlight = Spotlight search", default: '' }
+      oslog: { description: 'IVM_OSLOG: unslid _os_log_impl VA (libsystem_trace 180055c88) to print every guest os_log', default: '' }
+      oslog_n: { description: 'IVM_OSLOG_N cap', default: '60000' }
       utrace_extra: { description: 'extra unslid VAs appended to IVM_UTRACE (abort/assert/terminate hooks)', default: '' }
       binaddrs: { description: 'comma-separated unslid dsc addresses to dump as code windows (CAM_BINADDRS)', default: '' }
 permissions: { actions: read, contents: read }
@@ -73,6 +75,8 @@ jobs:
           IVM_USET: "${{ inputs.ivm_uset != '' && inputs.ivm_uset || '18bcf9b64:8=0,1c2918af0:0=1,1a8073be0:0=0,18c250eb0:0=1,18b9c08a4:8=1,18c25454c:1=3000000,19d2638d8:0=0/2,19d261b2c:32=19d261b34/23,19cd2f024:32=19cd2f028/20' }}"
           IVM_UTRACE: "${{ inputs.utrace_extra && format('1801953f0,{0}', inputs.utrace_extra) || '1801953f0' }}"
           IVM_UTRACE_BT: '1'
+          IVM_OSLOG: "${{ inputs.oslog }}"
+          IVM_OSLOG_N: "${{ inputs.oslog_n || '60000' }}"
         run: |
           set -uxo pipefail
           R=$GITHUB_WORKSPACE; O=$R/bench-out; mkdir -p "$O" /opt/b /opt/vm
