@@ -70,10 +70,34 @@ jobs:
           R=$GITHUB_WORKSPACE; O=$R/dsc-out
           python3 $R/ivm-repo/ivm/lab/tools/dsc-resolve.py /tmp/dsc.bin $(echo "${{ inputs.addrs }}" | tr ',' ' ') > $O/symbols.txt 2>&1
           cat $O/symbols.txt
+      - name: Dump Neutrino images (raw bytes, unslid base)
+        run: |
+          set -uxo pipefail
+          R=$GITHUB_WORKSPACE; O=$R/dsc-out
+          python3 - "$O" <<'PY'
+          import struct, sys, os, mmap
+          O = sys.argv[1]
+          f = open("/tmp/dsc.bin", "rb"); d = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+          mo, mc, _io, _ic = struct.unpack("<IIII", d[0x10:0x20])
+          maps = [struct.unpack("<QQIIII", d[mo + i * 32: mo + i * 32 + 32]) for i in range(mc)]
+          def va2file(v):
+              for a, sz, fo, _m, _i, _f in maps:
+                  if a <= v < a + sz:
+                      return fo + (v - a), a + sz - v
+              return None, 0
+          for name, base, n in [("NeutrinoCore", 0x1b7101000, 0x400000), ("NeutrinoKit", 0x1b72fc000, 0x200000)]:
+              fo, avail = va2file(base)
+              n = min(n, avail)
+              data = d[fo:fo + n]
+              open(os.path.join(O, "img-%s-%x.bin" % (name, base)), "wb").write(data)
+              print(name, hex(base), "bytes", len(data), "avail", avail)
+          PY
+          ls -la $O
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: dsc-symbolize-results
           path: |
             ${{ github.workspace }}/dsc-out/*.txt
+            ${{ github.workspace }}/dsc-out/img-*.bin
           if-no-files-found: warn
