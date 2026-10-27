@@ -10,7 +10,7 @@ on:
       cc: { description: 'gcc | clang', default: 'gcc' }
       meson: { description: '1 = phone meson option set (IVM_MESON)', default: '0' }
       cam_shot: { description: '1 = take 2 shots before Photos (library non-empty); 0 = empty library', default: '1' }
-      ktrace: { description: '1 = kernel data-abort trap; 2 = also BRK trap (_handle_breakpoint)', default: '0' }
+      ktrace: { description: '1 = kernel data-abort trap; 2 = also BRK trap; 3 = kill trace (brk+triage+psignal+memorystatus+exit1, PCs from this kernelcache)', default: '0' }
       photos_via: { description: "'' = Photos icon/Spotlight; viewer = open Photos from the Camera thumbnail", default: '' }
       photos_launch: { description: "'' = Photos home-icon tap (E13 config, reproduces the crash); spotlight = Spotlight search", default: '' }
       utrace_extra: { description: 'extra unslid VAs appended to IVM_UTRACE (abort/assert/terminate hooks)', default: '' }
@@ -91,6 +91,13 @@ jobs:
           bash $R/ivm-repo/ivm/inferno/gh-release.sh get "${{ inputs.diskset }}" /opt/dl > $O/download.log 2>&1
           zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS && rm -rf /opt/dl
           VMD=$(dirname "$(ls /opt/vm/*/entry.json | head -1)"); echo "VM=$VMD"
+          if [ "${{ inputs.ktrace }}" = "3" ]; then
+            # s43 kill trace: resolve kernel PCs from THIS run's kernelcache (BRK, data abort, exception_triage,
+            # psignal_internal, memorystatus_do_kill, exit1). Prints export lines; eval sets IVM_KTRACE*.
+            python3 -m venv /tmp/lzv && /tmp/lzv/bin/pip install -q lzfse
+            eval "$(/tmp/lzv/bin/python3 $R/tools/kernel-trap-pcs.py \"$VMD/kernelcache\" $O/ksym | tee $O/ksym-exports.txt)"
+            cat $O/ksym/ksyms-pick.txt
+          fi
           # Build engine (use pinned commit). set -e would skip the tail on failure, so guard it.
           if ! bash $R/ivm-repo/ivm/bench/build-x86.sh ${{ inputs.base }} /opt/b/eng > $O/build.log 2>&1; then
             echo "=== ENGINE BUILD FAILED, build.log tail ==="
