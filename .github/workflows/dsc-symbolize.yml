@@ -64,6 +64,12 @@ jobs:
           print("images:", len(imgs))
           PY
           tail -5 $O/exports.txt
+      - name: Resolve symbols from the full cache
+        run: |
+          set -uxo pipefail
+          R=$GITHUB_WORKSPACE; O=$R/dsc-out
+          python3 $R/ivm-repo/ivm/lab/tools/dsc-resolve.py /tmp/dsc.bin $(echo "${{ inputs.addrs }}" | tr ',' ' ') > $O/symbols.txt 2>&1
+          cat $O/symbols.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
