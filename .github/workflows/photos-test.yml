@@ -10,7 +10,7 @@ on:
       cc: { description: 'gcc | clang', default: 'gcc' }
       meson: { description: '1 = phone meson option set (IVM_MESON)', default: '0' }
       cam_shot: { description: '1 = take 2 shots before Photos (library non-empty); 0 = empty library', default: '1' }
-      ktrace: { description: '1 = kernel data-abort trap (IVM_KTRACE, s40 notes) for the silent Photos death', default: '0' }
+      ktrace: { description: '1 = kernel data-abort trap; 2 = also BRK trap (_handle_breakpoint)', default: '0' }
       photos_via: { description: "'' = Photos icon/Spotlight; viewer = open Photos from the Camera thumbnail", default: '' }
       photos_launch: { description: "'' = Photos home-icon tap (E13 config, reproduces the crash); spotlight = Spotlight search", default: '' }
       utrace_extra: { description: 'extra unslid VAs appended to IVM_UTRACE (abort/assert/terminate hooks)', default: '' }
@@ -23,10 +23,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
-      - name: Optional kernel trap (s42)
-        if: ${{ inputs.ktrace == '1' }}
+      - name: Optional kernel trap (s42, s43 brk)
+        if: ${{ inputs.ktrace == '1' || inputs.ktrace == '2' }}
         run: |
-          echo "IVM_KTRACE=fffffff007b569a0,fffffff007b57734" >> $GITHUB_ENV
+          # 2 = s43: also trace _handle_breakpoint (BRK #n, EC 0x3c: Swift/PAC traps) with user pc+bt
+          if [ "${{ inputs.ktrace }}" = "2" ]; then
+            echo "IVM_KTRACE=fffffff007b569a0,fffffff007b57734,fffffff007b57de4" >> $GITHUB_ENV
+          else
+            echo "IVM_KTRACE=fffffff007b569a0,fffffff007b57734" >> $GITHUB_ENV
+          fi
           echo "IVM_KTRACE_SAVE=fffffff007b569a0" >> $GITHUB_ENV
           echo "IVM_KTRACE_SS=1" >> $GITHUB_ENV
           echo "IVM_KTRACE_N=200" >> $GITHUB_ENV
