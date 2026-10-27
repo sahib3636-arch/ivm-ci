@@ -1,0 +1,73 @@
+name: dsc-symbolize
+# Names the dyld-cache images behind a Camera SIGABRT backtrace (run 40501149621).
+# Unslid addresses come from the run I serial log (printed - slide 0x930c000).
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'ivm repo ref', default: 'exp/editor-tap-20261027' }
+      addrs: { description: 'comma-separated unslid DSC addresses', default: '0x18027598c,0x180181c74,0x180109bb4,0x1b72a37f8,0x1b72a35a8,0x1b72a3b40,0x1b72a2e90,0x1b72a4010,0x1b71ae0d0,0x1b724fb7c,0x1b7144f00,0x1b7145544,0x1b71fbf64,0x1b7311790,0x1b7307840,0x1b7308c70,0x1a1121898,0x1a1140268,0x1845fd9d4,0x184602170,0x184602534,0x184532c88,0x184547818,0x184548c4c,0x18452b0e4,0x185225f94' }
+permissions: { actions: read, contents: read }
+jobs:
+  symbolize:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: Setup disk image
+        env:
+          IVM_PAT: '${{ secrets.IVM_PAT }}'
+        run: |
+          set -uxo pipefail
+          R=$GITHUB_WORKSPACE; O=$R/dsc-out; mkdir -p "$O" /opt/dl /opt/vm
+          sudo apt-get update -qq >/dev/null 2>&1; sudo apt-get install -y -qq zstd >/dev/null 2>&1
+          pip3 install -q --break-system-packages capstone libfsapfs-python 2>/dev/null || pip3 install -q capstone libfsapfs-python
+          sudo mkdir -p /home/user/.tokens; printf %s "$IVM_PAT" | sudo tee /home/user/.tokens/github.pat > /dev/null; sudo chmod 644 /home/user/.tokens/github.pat
+          bash $R/ivm-repo/ivm/inferno/gh-release.sh get diskset-setupdone-18A5351d /opt/dl > $O/download.log 2>&1
+          zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS && rm -rf /opt/dl
+          ROOT=$(find /opt/vm -maxdepth 3 -name root -type f | head -1); echo "ROOT=$ROOT"; echo "$ROOT" > $O/root-path.txt
+          find /opt/vm -maxdepth 3 -name entry.json | head -3
+      - name: Extract dyld shared cache and symbolize
+        run: |
+          set -uxo pipefail
+          R=$GITHUB_WORKSPACE; O=$R/dsc-out; mkdir -p "$O"
+          ROOT=$(cat $O/root-path.txt)
+          A="python3 $R/ivm-repo/ivm/lab/cam/tools/apfs.py $ROOT 0x6000 0"
+          $A ls /System/Library/Caches/com.apple.dyld > $O/dsc-ls.txt 2>&1; cat $O/dsc-ls.txt | head -40
+          DSC=$(sort -k2 -n -r $O/dsc-ls.txt | awk '$1 ~ /dyld_shared_cache_arm64e$/ {print $1; exit}')
+          [ -z "$DSC" ] && DSC=$(sort -k2 -n -r $O/dsc-ls.txt | awk '$1 ~ /dyld_shared_cache/ {print $1; exit}')
+          echo "DSC=$DSC"
+          $A get "/System/Library/Caches/com.apple.dyld/$(basename $DSC)" /tmp/dsc.bin
+          ls -la /tmp/dsc.bin
+          python3 $R/ivm-repo/ivm/lab/tools/dyld-cache-symbolize-light.py /tmp/dsc.bin $(echo "${{ inputs.addrs }}" | tr ',' ' ') > $O/symbolize.txt 2>&1
+          grep -E "^===" $O/symbolize.txt | cut -c1-200
+          # Images that appear in the backtrace: dump each (32 MB from its base) and list exports.
+          python3 - "$R" <<'PY'
+          import re, subprocess, sys, os
+          R = sys.argv[1]; O = os.path.join(R, "dsc-out")
+          txt = open(os.path.join(O, "symbolize.txt")).read()
+          imgs = {}
+          for m in re.finditer(r"=== (0x[0-9a-f]+): (\S+) \+ \d+ \(image base (0x[0-9a-f]+)\) ===", txt):
+              imgs.setdefault(m.group(3), m.group(2))
+          out = []
+          with open("/tmp/dsc.bin", "rb") as f:
+              for base, path in sorted(imgs.items(), key=lambda kv: int(kv[0], 16)):
+                  b = int(base, 16)
+                  fo = b - 0x180000000
+                  f.seek(fo); data = f.read(32 << 20)
+                  name = os.path.basename(path)
+                  fn = os.path.join("/tmp", "img-%s.bin" % name)
+                  open(fn, "wb").write(data)
+                  r = subprocess.run(["python3", os.path.join(R, "ivm-repo/ivm/lab/cam/tools/macho_exports.py"), fn, base], capture_output=True, text=True)
+                  out.append("### %s base %s\n%s%s" % (path, base, r.stdout, r.stderr[-400:]))
+          open(os.path.join(O, "exports.txt"), "w").write("\n".join(out))
+          print("images:", len(imgs))
+          PY
+          tail -5 $O/exports.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dsc-symbolize-results
+          path: |
+            ${{ github.workspace }}/dsc-out/*.txt
+          if-no-files-found: warn
