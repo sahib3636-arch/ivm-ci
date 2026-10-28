@@ -74,7 +74,7 @@ jobs:
         run: |
           set -uxo pipefail
           R=$GITHUB_WORKSPACE; O=$R/dsc-out
-          python3 $R/ivm-repo/ivm/lab/tools/dsc-find.py /tmp/dsc.bin '^_MTLCreateSystemDefaultDevice$' '^_objc_msgSend$' '^_objc_msgSend_fixup$' '^_objc_retain$' '^_objc_release$' '^_objc_alloc$' '^_objc_autoreleaseReturnValue$' '^_OBJC_CLASS_\\$_NSObject$' '^_OBJC_METACLASS_\\$_NSObject$' '^_objc_msgSendSuper2$' '^_sel_registerName$' '^_NSLog$' > $O/find.txt 2>&1
+          python3 $R/ivm-repo/ivm/lab/tools/dsc-find.py /tmp/dsc.bin '^_MTLCreateSystemDefaultDevice$' '^_objc_msgSend$' '^_objc_msgSend_fixup$' '^_objc_retain$' '^_objc_release$' '^_objc_alloc$' '^_objc_autoreleaseReturnValue$' '^_OBJC_CLASS_\$_NSObject$' '^_OBJC_METACLASS_\$_NSObject$' '^_objc_msgSendSuper2$' '^_sel_registerName$' '^_NSLog$' > $O/find.txt 2>&1
           wc -l $O/find.txt
           head -40 $O/find.txt
       - name: Dump Neutrino images (raw bytes, unslid base)
