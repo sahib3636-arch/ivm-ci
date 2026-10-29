@@ -113,9 +113,9 @@ jobs:
               # (KeyValue (DKSync3Coordinator, NeedsSiriCloudDelete), StructuredMetadata hash b1ff...). Each conflicting
               # save is a unique violation -> optimistic locking failure -> Photos/Camera abort. Keep a copy of the
               # base store for diagnosis, then remove it so CoreDuet creates an empty store on boot.
-              sudo mkdir -p "$O/knowledge-base"; sudo cp /mnt/data/mobile/Library/CoreDuet/Knowledge/knowledgeC.db* "$O/knowledge-base/" 2>/dev/null || true
-              sudo python3 "$GITHUB_WORKSPACE/tools/knowledge_drop_unique.py" /mnt/data/mobile/Library/CoreDuet/Knowledge/knowledgeC.db | tee -a $O/photos-db-fix.txt || true
-              ls -la /mnt/data/mobile/Library/CoreDuet/Knowledge/ | tee -a $O/photos-db-fix.txt || true
+              sudo mkdir -p "$O/knowledge-base"; sudo sh -c 'cp /mnt/data/mobile/Library/CoreDuet/Knowledge/knowledgeC.db* "$1"/knowledge-base/' sh "$O" || true
+              sudo python3 "$R/ivm-repo/ivm/ivm/lab/tools/knowledge_drop_unique.py" /mnt/data/mobile/Library/CoreDuet/Knowledge/knowledgeC.db | tee -a $O/photos-db-fix.txt || true
+              sudo ls -la /mnt/data/mobile/Library/CoreDuet/Knowledge/ | tee -a $O/photos-db-fix.txt || true
               sync; sudo umount /mnt/data
             else
               echo "photos db fix: mount failed" | tee $O/photos-db-fix.txt
