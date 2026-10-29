@@ -95,6 +95,26 @@ jobs:
           bash $R/ivm-repo/ivm/inferno/gh-release.sh get "${{ inputs.diskset }}" /opt/dl > $O/download.log 2>&1
           zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS && rm -rf /opt/dl
           VMD=$(dirname "$(ls /opt/vm/*/entry.json | head -1)"); echo "VM=$VMD"
+          # s44 CoreData fix (see tools/photos_db_fix.py): in the setupdone base, Z_PRIMARYKEY.Z_MAX is 0 for the
+          # GenericAlbum entities (26/31/32) while their rows go up to Z_PK 38. Photos' next insert collides
+          # ("Constraint unique violation" -> optimistic locking failure) and the grid stays empty. Repair the
+          # root disk on a read-write APFS mount (linux-apfs-rw v0.3.21) before the VM boots.
+          ROOT_IMG=$(find "$VMD" -maxdepth 1 -name root -type f | head -1); echo "ROOT_IMG=$ROOT_IMG"
+          if [ -n "$ROOT_IMG" ]; then
+            sudo apt-get install -y -q linux-headers-$(uname -r) build-essential > $O/apfsrw-deps.log 2>&1 || sudo apt-get install -y -q linux-headers-generic build-essential >> $O/apfsrw-deps.log 2>&1 || true
+            git clone -q --depth 1 -b v0.3.21 https://github.com/linux-apfs/linux-apfs-rw /tmp/apfsrw && make -C /tmp/apfsrw -j"$(nproc)" KDIR=/lib/modules/$(uname -r)/build > $O/apfsrw-build.log 2>&1
+            sudo insmod /tmp/apfsrw/apfs.ko || echo "apfs insmod failed"
+            LOOP=$(sudo losetup -f --show -o 24576 "$ROOT_IMG"); sudo mkdir -p /mnt/data
+            if sudo mount -t apfs -o vol=1,readwrite "$LOOP" /mnt/data; then
+              sudo python3 "$R/tools/photos_db_fix.py" /mnt/data/mobile/Media/PhotoData/Photos.sqlite | tee $O/photos-db-fix.txt
+              sync; sudo umount /mnt/data
+            else
+              echo "photos db fix: mount failed" | tee $O/photos-db-fix.txt
+            fi
+            sudo losetup -d "$LOOP" || true
+          else
+            echo "photos db fix: no root image under $VMD" | tee $O/photos-db-fix.txt
+          fi
           if [ "${{ inputs.ktrace }}" = "3" ]; then
             # s43 kill trace: resolve kernel PCs from THIS run's kernelcache (BRK, data abort, exception_triage,
             # psignal_internal, memorystatus_do_kill, exit1). Prints export lines; eval sets IVM_KTRACE*.
