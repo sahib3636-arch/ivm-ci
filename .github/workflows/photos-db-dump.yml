@@ -1,0 +1,68 @@
+name: photos-db-dump
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'ivm repo ref', default: 'main' }
+permissions: { actions: read, contents: read }
+jobs:
+  dump:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: Download diskset
+        env: { IVM_PAT: '${{ secrets.IVM_PAT }}' }
+        run: |
+          cd /tmp
+          curl -s -H "Authorization: Bearer $IVM_PAT" "https://api.github.com/repos/sahib3636-arch/ivm/releases/tags/diskset-setupdone-18A5351d" | python3 -c "
+          import sys,json,urllib.request,os
+          d=json.load(sys.stdin)
+          tok=os.environ['IVM_PAT']
+          for a in d['assets']:
+              if '.part' in a['name'] or a['name'].endswith('.md5'):
+                  req=urllib.request.Request(f\"https://api.github.com/repos/sahib3636-arch/ivm/releases/assets/{a['id']}\", headers={'Authorization': f'Bearer {tok}', 'Accept': 'application/octet-stream'})
+                  with urllib.request.urlopen(req) as r, open(f\"/tmp/{a['name']}\", 'wb') as f:
+                      f.write(r.read())
+          "
+          cat /tmp/*.part* > /tmp/diskset.tar.zst
+          mkdir -p /tmp/vm
+          zstd -d /tmp/diskset.tar.zst -o /tmp/diskset.tar
+          tar -xf /tmp/diskset.tar -C /tmp/vm
+      - name: Attach and dump Photos database
+        run: |
+          ROOT_IMG=$(find /tmp/vm -name "root" -type f | head -1)
+          hdiutil attach "$ROOT_IMG" -imagekey diskimage-class=CRawDiskImage -owners on
+          DATA_VOL=$(ls -d /Volumes/* 2>/dev/null | while read v; do [ -d "$v/var/mobile" ] && echo "$v" && break; done)
+          echo "Data volume: $DATA_VOL"
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          find "$DATA_VOL/var/mobile/Media/PhotoData" -maxdepth 2 \( -name 'Photos.sqlite*' -o -name '*.sqlite' \) > "$GITHUB_WORKSPACE/out/db-list.txt" 2>/dev/null || true
+          cat "$GITHUB_WORKSPACE/out/db-list.txt"
+          DB="$DATA_VOL/var/mobile/Media/PhotoData/Photos.sqlite"
+          cp "$DB" /tmp/Photos.sqlite
+          [ -f "$DB-wal" ] && cp "$DB-wal" /tmp/Photos.sqlite-wal
+          [ -f "$DB-shm" ] && cp "$DB-shm" /tmp/Photos.sqlite-shm
+          sqlite3 /tmp/Photos.sqlite "PRAGMA integrity_check;" > "$GITHUB_WORKSPACE/out/integrity.txt" 2>&1 || true
+          sqlite3 /tmp/Photos.sqlite "SELECT * FROM Z_PRIMARYKEY;" > "$GITHUB_WORKSPACE/out/z_primarykey.txt" 2>&1 || true
+          sqlite3 /tmp/Photos.sqlite "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE type='index' AND sql LIKE '%UNIQUE%';" > "$GITHUB_WORKSPACE/out/unique-indexes.txt" 2>&1 || true
+          python3 - "$GITHUB_WORKSPACE/out/counter-check.txt" <<'PY'
+          import sqlite3, sys
+          c = sqlite3.connect('/tmp/Photos.sqlite')
+          out = open(sys.argv[1], 'w')
+          pk = {ent: (name, zmax) for ent, name, zmax in c.execute('SELECT Z_ENT, Z_NAME, Z_MAX FROM Z_PRIMARYKEY')}
+          tables = [r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'Z%'")]
+          for t in sorted(tables):
+              cols = [r[1] for r in c.execute(f'PRAGMA table_info("{t}")')]
+              if 'Z_PK' not in cols or 'Z_ENT' not in cols:
+                  continue
+              ents = [r[0] for r in c.execute(f'SELECT DISTINCT Z_ENT FROM "{t}"')]
+              n, mx = c.execute(f'SELECT COUNT(*), MAX(Z_PK) FROM "{t}"').fetchone()
+              for e in ents:
+                  zmax = pk.get(e, ('?', None))[1]
+                  out.write(f'{t} ent={e} rows={n} maxZ_PK={mx} Z_PRIMARYKEY.Z_MAX={zmax} {"MISMATCH" if zmax is not None and mx is not None and zmax < mx else "ok"}\n')
+          out.close()
+          PY
+          cat "$GITHUB_WORKSPACE/out/counter-check.txt" | head -80
+          hdiutil detach "$DATA_VOL" || true
+      - uses: actions/upload-artifact@v4
+        with: { name: photos-db, path: out }
