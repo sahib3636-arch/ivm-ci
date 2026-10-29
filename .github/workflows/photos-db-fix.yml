@@ -47,6 +47,11 @@ jobs:
           sudo cp "$DB" /tmp/Photos.before.sqlite
           sudo python3 tools/photos_db_fix.py "$DB"
           sync
+          # knowledgeC.db: the store behind the unique violation (ZSTRUCTUREDMETADATA hash update)
+          mkdir -p knowledge-out; sudo sh -c 'cp /mnt/data/mobile/Library/CoreDuet/Knowledge/knowledgeC.db* knowledge-out/' || true
+          sudo chown -R runner:runner knowledge-out; ls -l knowledge-out
+          python3 tools/sqlite_check.py knowledge-out/knowledgeC.db > knowledge-out/check.txt 2>&1 || true
+          head -c 3000 knowledge-out/check.txt
           sudo umount /mnt/data
           sudo losetup -d "$LOOP"
           echo "root after fix:"; ls -l "$ROOT_IMG"
@@ -57,4 +62,4 @@ jobs:
           python3 tools/photos_db_dump.py "$ROOT_IMG" 0x6000 out-after
           cat out-after/report.txt | grep -E "integrity|MISMATCH" || true
       - uses: actions/upload-artifact@v4
-        with: { name: photos-db-fix, path: out-after }
+        with: { name: photos-db-fix, path: "out-after\nknowledge-out" }
