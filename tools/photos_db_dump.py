@@ -21,7 +21,7 @@ class F:
 img, off, out = sys.argv[1], int(sys.argv[2], 0), sys.argv[3]
 os.makedirs(out, exist_ok=True)
 c = pyfsapfs.container(); c.open_file_object(F(img, off))
-base = '/private/var/mobile/Media/PhotoData/'
+base = '/mobile/Media/PhotoData/'
 found = None
 for vi in range(c.get_number_of_volumes()):
     v = c.get_volume(vi)
@@ -47,8 +47,16 @@ if found is None:
             p2 = path + '/' + name
             if name.endswith('.sqlite') or name.endswith('.sqlite-wal'):
                 hits.append(p2)
-            if sub.is_directory:
-                walk(sub, p2, depth + 1, hits)
+            walk(sub, p2, depth + 1, hits)
+    def ls(v, path):
+        try:
+            e = v.get_file_entry_by_path(path)
+            return [x.name for x in e.sub_file_entries] if e is not None else 'absent'
+        except Exception as ex:
+            return 'ERR %s' % ex
+    v1 = c.get_volume(1)
+    for pth in ('/mobile', '/mobile/Media', '/mobile/Media/PhotoData', '/mobile/Media/DCIM', '/containers', '/mobile/Library'):
+        print('vol1', pth, ls(v1, pth))
     for vi in range(c.get_number_of_volumes()):
         v = c.get_volume(vi)
         try:
@@ -61,7 +69,7 @@ if found is None:
         try:
             r = v.get_root_directory()
             for sub in r.sub_file_entries:
-                if sub.name in ('private', 'var'):
+                if sub.name in ('mobile', 'containers'):
                     walk(sub, '/' + sub.name, 0, hits)
         except Exception as ex:
             print('walk err', ex)
