@@ -105,4 +105,16 @@ for t in sorted(r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE 
 w('unique indexes:')
 for row in con.execute("SELECT name, tbl_name, sql FROM sqlite_master WHERE type='index' AND sql LIKE '%UNIQUE%'"):
     w(' ', row)
+w('unique index duplicate keys:')
+for name, tbl, sql in con.execute("SELECT name, tbl_name, sql FROM sqlite_master WHERE type='index' AND sql LIKE '%UNIQUE%'").fetchall():
+    cols = [r[2] for r in con.execute(f'PRAGMA index_info("{name}")')]
+    if not cols or None in cols:
+        w(f'  {name}: expression index, skipped'); continue
+    cl = ', '.join(f'"{c}"' for c in cols)
+    try:
+        dup = con.execute(f'SELECT {cl}, COUNT(*) FROM "{tbl}" GROUP BY {cl} HAVING COUNT(*)>1 LIMIT 5').fetchall()
+    except Exception as ex:
+        dup = 'ERR %s' % ex
+    w(f'  {name} on {tbl}{tuple(cols)} dups={dup}')
+w('rows per entity:', con.execute('SELECT Z_ENT, COUNT(*) FROM "ZGENERICALBUM" GROUP BY Z_ENT').fetchall())
 rep.close()
