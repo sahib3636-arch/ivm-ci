@@ -113,7 +113,9 @@ jobs:
               # (KeyValue (DKSync3Coordinator, NeedsSiriCloudDelete), StructuredMetadata hash b1ff...). Each conflicting
               # save is a unique violation -> optimistic locking failure -> Photos/Camera abort. Keep a copy of the
               # base store for diagnosis, then remove it so CoreDuet creates an empty store on boot.
-              sudo sh -c 'mkdir -p "$1"/knowledge-base && cp /mnt/data/mobile/Library/CoreDuet/Knowledge/knowledgeC.db* "$1"/knowledge-base/ 2>/dev/null; python3 -c "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); idx=[r[0] for r in c.execute(\"SELECT name FROM sqlite_master WHERE type='index' AND sql LIKE '%UNIQUE%'\")]; [c.execute('DROP INDEX IF EXISTS \"%s\"' % i) for i in idx]; c.commit(); print('dropped unique indexes', idx); print(list(c.execute('SELECT name, tbl_name FROM sqlite_master WHERE type=\\'index\\''))); c.execute('PRAGMA integrity_check')" /mnt/data/mobile/Library/CoreDuet/Knowledge/knowledgeC.db; ls -la /mnt/data/mobile/Library/CoreDuet/Knowledge/' sh "$O" | tee -a $O/photos-db-fix.txt || true
+              sudo mkdir -p "$O/knowledge-base"; sudo cp /mnt/data/mobile/Library/CoreDuet/Knowledge/knowledgeC.db* "$O/knowledge-base/" 2>/dev/null || true
+              sudo python3 "$GITHUB_WORKSPACE/tools/knowledge_drop_unique.py" /mnt/data/mobile/Library/CoreDuet/Knowledge/knowledgeC.db | tee -a $O/photos-db-fix.txt || true
+              ls -la /mnt/data/mobile/Library/CoreDuet/Knowledge/ | tee -a $O/photos-db-fix.txt || true
               sync; sudo umount /mnt/data
             else
               echo "photos db fix: mount failed" | tee $O/photos-db-fix.txt
