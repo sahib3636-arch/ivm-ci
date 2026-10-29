@@ -34,6 +34,38 @@ for vi in range(c.get_number_of_volumes()):
         break
 print('volumes', c.get_number_of_volumes(), 'Photos.sqlite volume', found)
 if found is None:
+    # discovery: list every volume's top level and any SQLite under the mobile home
+    def walk(entry, path, depth, hits):
+        if depth > 6:
+            return
+        try:
+            subs = list(entry.sub_file_entries)
+        except Exception:
+            return
+        for sub in subs:
+            name = sub.name or ''
+            p2 = path + '/' + name
+            if name.endswith('.sqlite') or name.endswith('.sqlite-wal'):
+                hits.append(p2)
+            if sub.is_directory:
+                walk(sub, p2, depth + 1, hits)
+    for vi in range(c.get_number_of_volumes()):
+        v = c.get_volume(vi)
+        try:
+            root = v.get_root_directory()
+            top = [x.name for x in root.sub_file_entries]
+        except Exception as ex:
+            top = ['ERR %s' % ex]
+        print('volume', vi, 'top:', top[:30])
+        hits = []
+        try:
+            r = v.get_root_directory()
+            for sub in r.sub_file_entries:
+                if sub.name in ('private', 'var'):
+                    walk(sub, '/' + sub.name, 0, hits)
+        except Exception as ex:
+            print('walk err', ex)
+        print('volume', vi, 'sqlite hits:', hits[:40])
     sys.exit(3)
 v = c.get_volume(found)
 for name in ('Photos.sqlite', 'Photos.sqlite-wal', 'Photos.sqlite-shm'):
