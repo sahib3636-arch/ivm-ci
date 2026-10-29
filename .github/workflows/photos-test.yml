@@ -108,6 +108,7 @@ jobs:
             LOOP=$(sudo losetup -f --show -o 24576 "$ROOT_IMG"); sudo mkdir -p /mnt/data
             if sudo mount -t apfs -o vol=1,readwrite "$LOOP" /mnt/data; then
               sudo python3 "$R/ivm-repo/ivm/lab/tools/photos_db_fix.py" /mnt/data/mobile/Media/PhotoData/Photos.sqlite | tee $O/photos-db-fix.txt
+              sudo python3 "$R/ivm-repo/ivm/lab/tools/photos_sqldebug.py" /mnt/data | tee -a $O/photos-db-fix.txt
               sync; sudo umount /mnt/data
             else
               echo "photos db fix: mount failed" | tee $O/photos-db-fix.txt
