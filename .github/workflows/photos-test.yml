@@ -44,7 +44,7 @@ jobs:
           # CAM_TEST=1 the Photos code never runs (run#15: perfect boot, zero photos_* fields).
           # CAM_SHOT populates the library so the grid has content; CAM_EDITCAM tests the editor.
           CAM_TEST: '1'
-          CAM_IPS: '1'      # s46: copy the guest's Photos store out of the live overlay (bench.py photos-live)
+          CAM_IPS: '1'      # s46: bench commits the guest overlay into the root image before quit (ips-commit)
           CAM_PHOTOS: '1'
           CAM_SHOT: "${{ inputs.cam_shot }}"
           PHOTOS_VIA: "${{ inputs.photos_via }}"
@@ -138,11 +138,17 @@ jobs:
           CAM_PHOTOS=1 IVM_USET="$IVM_USET" python3 -u $R/ivm-repo/ivm/bench/bench.py /opt/b/eng /opt/qd "$VMD" "$O" "photos-test" "4" "3G" "512" 2>&1 | tee $O/bench.log
           echo "=== Photos results ==="
           grep -E "photos_grid_reached|photos_state|photos_launch_tries" $O/bench.log | tail -5
-      - name: Photos store check (guest DB from the live overlay)
+      - name: Photos store check (guest DB committed to the root image)
         if: always()
         run: |
           D=${{ github.workspace }}/bench-out/photos-test/photos-live
-          if [ -f "$D/Photos.sqlite" ]; then python3 ${{ github.workspace }}/ivm-repo/ivm/lab/tools/photos_db_check.py "$D" > "$D/check.txt" 2>&1; cat "$D/check.txt"; else echo "no guest Photos store captured"; fi
+          mkdir -p "$D"
+          ROOT_IMG=$(ls /opt/vm/*/root 2>/dev/null | head -1)
+          if [ -n "$ROOT_IMG" ]; then
+            python3 ${{ github.workspace }}/ivm-repo/ivm/lab/tools/photos_db_dump.py "$ROOT_IMG" 0x6000 "$D/dump" > "$D/dump.log" 2>&1 || true
+            tail -40 "$D/dump.log"; cat "$D/dump/report.txt" 2>/dev/null || true
+          else echo "no root image"; fi
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
