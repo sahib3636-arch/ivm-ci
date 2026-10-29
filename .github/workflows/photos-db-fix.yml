@@ -43,7 +43,7 @@ jobs:
           sudo mkdir -p /mnt/data
           sudo mount -t apfs -o vol=1,readwrite "$LOOP" /mnt/data
           DB=/mnt/data/mobile/Media/PhotoData/Photos.sqlite
-          ls -l "$DB"*
+          sudo sh -c 'ls -l "$1"*' sh "$DB"
           sudo cp "$DB" /tmp/Photos.before.sqlite
           sudo python3 tools/photos_db_fix.py "$DB"
           sync
