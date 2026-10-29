@@ -143,7 +143,8 @@ jobs:
         run: |
           D=${{ github.workspace }}/bench-out/photos-test/photos-live
           mkdir -p "$D"
-          ROOT_IMG=$(ls /opt/vm/*/root 2>/dev/null | head -1)
+          ls -la /opt/vm/iphone11 2>&1 | head -20
+          ROOT_IMG=$(find /opt/vm -maxdepth 3 -name root -type f 2>/dev/null | head -1); echo "ROOT_IMG=$ROOT_IMG"
           if [ -n "$ROOT_IMG" ]; then
             python3 ${{ github.workspace }}/ivm-repo/ivm/lab/tools/photos_db_dump.py "$ROOT_IMG" 0x6000 "$D/dump" > "$D/dump.log" 2>&1 || true
             tail -40 "$D/dump.log"; cat "$D/dump/report.txt" 2>/dev/null || true
