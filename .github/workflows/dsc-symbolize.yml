@@ -5,6 +5,8 @@ on:
   workflow_dispatch:
     inputs:
       ivm_ref: { description: 'ivm repo ref', default: 'exp/editor-tap-20261027' }
+      before: { description: 'bytes before each address to disassemble', default: '24' }
+      len: { description: 'total disassembly bytes per address', default: '200' }
       addrs: { description: 'comma-separated unslid DSC addresses', default: '0x18027598c,0x180181c74,0x180109bb4,0x1b72a37f8,0x1b72a35a8,0x1b72a3b40,0x1b72a2e90,0x1b72a4010,0x1b71ae0d0,0x1b724fb7c,0x1b7144f00,0x1b7145544,0x1b71fbf64,0x1b7311790,0x1b7307840,0x1b7308c70,0x1a1121898,0x1a1140268,0x1845fd9d4,0x184602170,0x184602534,0x184532c88,0x184547818,0x184548c4c,0x18452b0e4,0x185225f94' }
 permissions: { actions: read, contents: read }
 jobs:
@@ -39,7 +41,7 @@ jobs:
           echo "DSC=$DSC"
           $A get "/System/Library/Caches/com.apple.dyld/$(basename $DSC)" /tmp/dsc.bin
           ls -la /tmp/dsc.bin
-          python3 $R/ivm-repo/ivm/lab/tools/dyld-cache-symbolize-light.py /tmp/dsc.bin $(echo "${{ inputs.addrs }}" | tr ',' ' ') > $O/symbolize.txt 2>&1
+          DSC_BEFORE=${{ inputs.before }} DSC_LEN=${{ inputs.len }} python3 $R/ivm-repo/ivm/lab/tools/dyld-cache-symbolize-light.py /tmp/dsc.bin $(echo "${{ inputs.addrs }}" | tr ',' ' ') > $O/symbolize.txt 2>&1
           grep -E "^===" $O/symbolize.txt | cut -c1-200
           # Images that appear in the backtrace: dump each (32 MB from its base) and list exports.
           python3 - "$R" <<'PY'
