@@ -1,0 +1,60 @@
+name: photos-db-fix
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'ivm repo ref', default: 'main' }
+permissions: { actions: read, contents: read }
+jobs:
+  fix:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download diskset
+        env: { IVM_PAT: '${{ secrets.IVM_PAT }}' }
+        run: |
+          mkdir -p /tmp/dl && cd /tmp/dl
+          curl -s -H "Authorization: Bearer $IVM_PAT" "https://api.github.com/repos/sahib3636-arch/ivm/releases/tags/diskset-setupdone-18A5351d" | python3 -c "
+          import sys,json,urllib.request,os
+          d=json.load(sys.stdin)
+          tok=os.environ['IVM_PAT']
+          for a in d['assets']:
+              if '.part' in a['name'] or a['name'].endswith('.md5'):
+                  req=urllib.request.Request(f\"https://api.github.com/repos/sahib3636-arch/ivm/releases/assets/{a['id']}\", headers={'Authorization': f'Bearer {tok}', 'Accept': 'application/octet-stream'})
+                  with urllib.request.urlopen(req) as r, open(f\"/tmp/dl/{a['name']}\", 'wb') as f:
+                      f.write(r.read())
+          "
+          cat /tmp/dl/*.part* > /tmp/dl/diskset.tar.zst
+          zstd -d -q /tmp/dl/diskset.tar.zst -o /tmp/dl/diskset.tar
+          mkdir -p /tmp/vm && tar -xf /tmp/dl/diskset.tar -C /tmp/vm
+          find /tmp/vm -name root -type f -exec ls -l {} \;
+      - name: Build Linux APFS (read-write) module
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q linux-headers-$(uname -r) build-essential || sudo apt-get install -y -q linux-headers-generic build-essential
+          git clone -q --depth 1 -b v0.3.21 https://github.com/linux-apfs/linux-apfs-rw /tmp/apfsrw
+          make -C /tmp/apfsrw -j"$(nproc)" KDIR=/lib/modules/$(uname -r)/build
+          sudo insmod /tmp/apfsrw/apfs.ko && echo "apfs module loaded"
+      - name: Fix Photos CoreData counters on the read-write volume
+        run: |
+          ROOT_IMG=$(find /tmp/vm -name root -type f | head -1)
+          LOOP=$(sudo losetup -f --show -o 24576 "$ROOT_IMG")
+          echo "loop: $LOOP"
+          sudo mkdir -p /mnt/data
+          sudo mount -t apfs -o vol=1,readwrite "$LOOP" /mnt/data
+          DB=/mnt/data/mobile/Media/PhotoData/Photos.sqlite
+          ls -l "$DB"*
+          sudo cp "$DB" /tmp/Photos.before.sqlite
+          sudo python3 tools/photos_db_fix.py "$DB"
+          sync
+          sudo umount /mnt/data
+          sudo losetup -d "$LOOP"
+          echo "root after fix:"; ls -l "$ROOT_IMG"
+      - name: Verify with the read-only reader
+        run: |
+          pip install --break-system-packages -q libfsapfs-python
+          ROOT_IMG=$(find /tmp/vm -name root -type f | head -1)
+          python3 tools/photos_db_dump.py "$ROOT_IMG" 0x6000 out-after
+          cat out-after/report.txt | grep -E "integrity|MISMATCH" || true
+      - uses: actions/upload-artifact@v4
+        with: { name: photos-db-fix, path: out-after }
