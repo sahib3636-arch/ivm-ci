@@ -114,7 +114,7 @@ jobs:
               # save is a unique violation -> optimistic locking failure -> Photos/Camera abort. Keep a copy of the
               # base store for diagnosis, then remove it so CoreDuet creates an empty store on boot.
               sudo mkdir -p "$O/knowledge-base"; sudo sh -c 'cp /mnt/data/mobile/Library/CoreDuet/Knowledge/knowledgeC.db* "$1"/knowledge-base/' sh "$O" || true
-              sudo python3 "$R/ivm-repo/ivm/ivm/lab/tools/knowledge_drop_unique.py" /mnt/data/mobile/Library/CoreDuet/Knowledge/knowledgeC.db | tee -a $O/photos-db-fix.txt || true
+              sudo python3 "$R/ivm-repo/ivm/lab/tools/knowledge_drop_unique.py" /mnt/data/mobile/Library/CoreDuet/Knowledge/knowledgeC.db | tee -a $O/photos-db-fix.txt || true
               sudo ls -la /mnt/data/mobile/Library/CoreDuet/Knowledge/ | tee -a $O/photos-db-fix.txt || true
               sync; sudo umount /mnt/data
             else
