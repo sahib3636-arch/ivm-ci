@@ -1,0 +1,51 @@
+name: metal-guest-symbols
+# Read only system dyld cache symbol tables. No user photo traversal or export.
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'ivm full SHA', default: 'exp/device-stub-20261027' }
+permissions: { contents: read, actions: read }
+jobs:
+  symbols:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: sahib3636-arch/ivm
+          token: '${{ secrets.IVM_PAT }}'
+          ref: '${{ inputs.ivm_ref }}'
+          path: ivm-repo
+          lfs: false
+          persist-credentials: false
+      - name: Open system disk and inspect guest allocation symbols
+        env:
+          IVM_PAT: '${{ secrets.IVM_PAT }}'
+        shell: bash
+        run: |
+          set -euo pipefail
+          R="$GITHUB_WORKSPACE"; O="$R/guest-symbols"; mkdir -p "$O" /opt/dl /opt/vm
+          sudo apt-get update -qq >/dev/null 2>&1
+          sudo apt-get install -y -qq zstd >/dev/null 2>&1
+          pip3 install -q --break-system-packages libfsapfs-python
+          sudo install -d -m 700 -o "$(id -u)" -g "$(id -g)" /home/user/.tokens
+          umask 077; printf %s "$IVM_PAT" > /home/user/.tokens/github.pat
+          trap 'rm -f /home/user/.tokens/github.pat /tmp/ivm-system-dsc.bin' EXIT
+          bash "$R/ivm-repo/ivm/inferno/gh-release.sh" get diskset-setupdone-18A5351d /opt/dl > "$O/download.log" 2>&1
+          rm -f /home/user/.tokens/github.pat
+          zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS; rm -rf /opt/dl
+          ROOT=$(find /opt/vm -maxdepth 3 -name root -type f | head -1); test -n "$ROOT"
+          A="$R/ivm-repo/ivm/lab/cam/tools/apfs.py"
+          python3 "$A" "$ROOT" 0x6000 0 ls /System/Library/Caches/com.apple.dyld > "$O/dsc-ls.txt"
+          DSC=$(sort -k2 -n -r "$O/dsc-ls.txt" | awk '$1 ~ /dyld_shared_cache_arm64e$/ {print $1; exit}')
+          test -n "$DSC"
+          python3 "$A" "$ROOT" 0x6000 0 get "/System/Library/Caches/com.apple.dyld/$(basename "$DSC")" /tmp/ivm-system-dsc.bin
+          python3 "$R/ivm-repo/ivm/lab/tools/dsc-find.py" /tmp/ivm-system-dsc.bin '^_malloc$' '^_calloc$' '^_free$' '^_malloc_size$' '^_class_getInstanceSize$' '^_class_createInstance$' '^_object_getClass$' '^_objc_retain$' '^_objc_release$' '^_objc_storeStrong$' > "$O/find.txt"
+          cat "$O/find.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: metal-guest-symbols
+          path: guest-symbols/find.txt
+          if-no-files-found: warn
+          retention-days: 7
