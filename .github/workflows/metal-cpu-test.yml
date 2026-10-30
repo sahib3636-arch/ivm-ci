@@ -47,3 +47,7 @@ jobs:
           /tmp/test_qemu_embeddedprobe_nolink
           clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_embeddedprobe.c -o /tmp/test_qemu_embeddedprobe_link
           /tmp/test_qemu_embeddedprobe_link
+          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_bufferprobe.c -o /tmp/test_qemu_bufferprobe_nolink
+          /tmp/test_qemu_bufferprobe_nolink
+          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_bufferprobe.c -o /tmp/test_qemu_bufferprobe_link
+          /tmp/test_qemu_bufferprobe_link
