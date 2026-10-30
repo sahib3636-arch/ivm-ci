@@ -41,7 +41,7 @@ jobs:
           vulkaninfo --summary > "$GITHUB_WORKSPACE/pxg-results/vulkan.txt" 2>&1
           D="$GITHUB_WORKSPACE/ivm-repo/ivm/lab/metal_cpu"
           clang -std=c11 -Wall -Wextra -Werror -O2 "$D/pxg_vulkan_smoke.c" "$D/metal_cpu.c" -lvulkan -o /tmp/pxg_smoke
-          for flag in 0 1 2 4 8; do
+          for flag in 0 1 2 4 8 16; do
             for opacity in full half; do
               log="$GITHUB_WORKSPACE/pxg-results/render-$flag-$opacity.txt"
               /tmp/pxg_smoke "/tmp/shaders/pxg-$flag.vert.spv" "/tmp/shaders/pxg-$flag.frag.spv" "$flag" "$opacity" 2>&1 | tee "$log"
