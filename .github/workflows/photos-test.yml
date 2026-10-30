@@ -22,8 +22,7 @@ on:
       live_queue: { description: '1 = experimental live host command queue, requires metal_single=1', default: '0' }
       live_texture: { description: '1 = limited guest-backed host texture experiment', default: '0' }
       live_buffer: { description: '1 = experimental live shared Metal buffer, requires metal_single=1', default: '0' }
-      buffer_probe: { description: '1 = synthetic buffer allocation/copy diagnostic, not a Metal buffer', default: '0' }
-      metal_args: { description: '1 = trace buffer request sizes/options, no guest contents', default: '0' }
+      buffer_probe: { description: '1 = synthetic buffer probe, args = trace request sizes, both = both', default: '0' }
       oslog: { description: 'IVM_OSLOG: unslid _os_log_impl VA (libsystem_trace 180055c88) to print every guest os_log', default: '' }
       oslog_n: { description: 'IVM_OSLOG_N cap', default: '60000' }
       utrace_extra: { description: 'extra unslid VAs appended to IVM_UTRACE (abort/assert/terminate hooks)', default: '' }
@@ -104,8 +103,8 @@ jobs:
           IVM_METAL_LIVE_BUFFER: "${{ inputs.live_buffer }}"
           IVM_METAL_LIVE_QUEUE: "${{ inputs.live_queue }}"
           IVM_METAL_LIVE_COMMAND: "${{ inputs.live_command }}"
-          IVM_METAL_BUFFER_PROBE: "${{ inputs.buffer_probe }}"
-          IVM_MARGS: "${{ inputs.metal_args }}"
+          IVM_METAL_BUFFER_PROBE: "${{ (inputs.buffer_probe == '1' || inputs.buffer_probe == 'both') && '1' || '0' }}"
+          IVM_MARGS: "${{ (inputs.buffer_probe == 'args' || inputs.buffer_probe == 'both') && '1' || '0' }}"
           IVM_OSLOG: "${{ inputs.oslog }}"
           IVM_OSLOG_N: "${{ inputs.oslog_n || '60000' }}"
         run: |
