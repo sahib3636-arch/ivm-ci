@@ -1,0 +1,77 @@
+name: metal-runtime-ffi
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'ivm full SHA', default: 'exp/device-stub-20261027' }
+      scan_run: { description: 'System metallib scan run ID', default: '41013651124' }
+permissions: { contents: read, actions: read }
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: sahib3636-arch/ivm
+          token: '${{ secrets.IVM_PAT }}'
+          ref: '${{ inputs.ivm_ref }}'
+          path: ivm-repo
+          lfs: false
+          persist-credentials: false
+      - name: Install clang and software Vulkan
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang libvulkan-dev mesa-vulkan-drivers vulkan-validationlayers
+          rustup toolchain install 1.98.1 --profile minimal
+      - name: Build pinned runtime and extended parser plugin
+        env: { CC: clang, CXX: clang++, CARGO_BUILD_JOBS: '2' }
+        run: |
+          set -euo pipefail
+          git clone --quiet --filter=blob:none --no-checkout --depth=1 https://github.com/steelbrain/metal2vulkan.git m2v
+          cd m2v
+          git fetch --quiet --depth=1 origin 219f01365dc4c8eb346816c405b5b17403793764
+          git sparse-checkout init --no-cone
+          printf '%s\n' '/Cargo.toml' '/rust-toolchain.toml' '/README.md' '/crates/metal2vulkan/Cargo.toml' '/crates/metal2vulkan/build.rs' '/crates/metal2vulkan/build_support.rs' '/crates/metal2vulkan/src/' '/crates/metal2vulkan-air/Cargo.toml' '/crates/metal2vulkan-air/src/' '/crates/metal2vulkan-devtools/Cargo.toml' '/crates/metal2vulkan-devtools/src/' '/crates/metal2vulkan-runtime/Cargo.toml' '/crates/metal2vulkan-runtime/src/' | git sparse-checkout set --no-cone --stdin
+          git checkout --detach 219f01365dc4c8eb346816c405b5b17403793764
+          cp -a ../ivm-repo/ivm/lab/metal_ffi crates/ivm_metal_ffi
+          cp ../ivm-repo/ivm/lab/metal_ffi_runtime/runtime_ext.rs crates/ivm_metal_ffi/src/runtime_ext.rs
+          printf '\nmod runtime_ext;\n' >> crates/ivm_metal_ffi/src/lib.rs
+          printf '\nmetal2vulkan-runtime = { path = "../metal2vulkan-runtime" }\n' >> crates/ivm_metal_ffi/Cargo.toml
+          python3 - <<'PY'
+          p='Cargo.toml';s=open(p).read()
+          for m in ('metal2vulkan-conformance','metal2vulkan-validation'):
+              s=s.replace('    "crates/'+m+'",\n','')
+          s=s.replace('members = [', 'members = [\n    "crates/ivm_metal_ffi",',1)
+          open(p,'w').write(s)
+          PY
+          cargo +1.98.1 build -p ivm-metal-ffi
+          mkdir -p "$GITHUB_WORKSPACE/runtime-plugin"
+          cp target/debug/libivm_metal_ffi.so "$GITHUB_WORKSPACE/runtime-plugin/"
+          strip --strip-debug "$GITHUB_WORKSPACE/runtime-plugin/libivm_metal_ffi.so"
+          clang -std=c11 -Wall -Wextra -Werror -Icrates/ivm_metal_ffi -I../ivm-repo/ivm/lab/metal_ffi_runtime ../ivm-repo/ivm/lab/metal_ffi_runtime/test_runtime_pipeline.c -L"$GITHUB_WORKSPACE/runtime-plugin" -livm_metal_ffi -Wl,-rpath,"$GITHUB_WORKSPACE/runtime-plugin" -o "$GITHUB_WORKSPACE/test_runtime_pipeline"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: metal-runtime-ffi-linux-arm64
+          path: runtime-plugin/libivm_metal_ffi.so
+          retention-days: 3
+      - uses: actions/download-artifact@v4
+        with:
+          name: photos-metallib-scan-results
+          path: system-shaders
+          run-id: '${{ inputs.scan_run }}'
+          github-token: '${{ github.token }}'
+      - name: Create real CPU Vulkan pipeline with synthetic shader constants
+        run: |
+          set -euo pipefail
+          IN=$(find "$GITHUB_WORKSPACE/system-shaders" -maxdepth 1 -name '*.metallib' -type f | head -1); test -n "$IN"
+          ICD=$(find /usr/share/vulkan/icd.d -iname '*lvp*json' -type f | head -1); test -n "$ICD"
+          sudo unshare -n -- env VK_ICD_FILENAMES="$ICD" VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation \
+            timeout 180 "$GITHUB_WORKSPACE/test_runtime_pipeline" "$IN" 2>&1 | tee runtime-pipeline.log
+          ! grep -E 'Validation Error|VUID-' runtime-pipeline.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: metal-runtime-pipeline-test
+          path: runtime-pipeline.log
+          if-no-files-found: warn
+          retention-days: 7
