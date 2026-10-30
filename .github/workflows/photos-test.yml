@@ -2,6 +2,7 @@ name: photos-test
 on:
   workflow_dispatch:
     inputs:
+      camera_gate: { description: 'CI-only: defer experimental Metal hooks until after Camera fixture capture', default: '0' }
       ivm_uset: { description: 'IVM_USET value to test (empty for default)', default: '' }
       ivm_ref: { description: 'ivm repo ref', default: 'main' }
       diskset: { description: 'disk set release tag (diskset-<name>-18A5351d)', default: 'diskset-setupdone-18A5351d' }
@@ -99,6 +100,7 @@ jobs:
           IVM_METAL_LIVE_LIBRARY: "${{ (inputs.live_library == 'probe' || inputs.live_library == 'special') && '1' || inputs.live_library }}"
           IVM_METAL_CONSTANT_PROBE: "${{ inputs.live_library == 'probe' && '1' || '0' }}"
           IVM_METAL_LIVE_SPECIALIZATION: "${{ inputs.live_library == 'special' && '1' || '0' }}"
+          IVM_METAL_GATE_FILE: "${{ inputs.camera_gate == '1' && '/tmp/ivm-metal-fixture-gate' || '' }}"
           IVM_METAL_FFI_PROBE_PATH: "${{ inputs.ffi_run != '' && format('{0}/metal-ffi/libivm_metal_ffi.so', github.workspace) || '' }}"
           IVM_METAL_LIMITS_DISCOVERY: "${{ inputs.limits_discovery }}"
           IVM_METAL_LIVE_TEXTURE: "${{ inputs.live_texture }}"
