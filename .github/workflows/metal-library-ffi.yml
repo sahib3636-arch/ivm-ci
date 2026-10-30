@@ -104,7 +104,8 @@ jobs:
           mkdir -p shader-ffi-out
           sudo cp /tmp/test.vert.spv shader-ffi-out/pxg-0.vert.spv
           sudo cp /tmp/test.frag.spv shader-ffi-out/pxg-0.frag.spv
-          sudo chown "$(id -u):$(id -g)" shader-ffi-out/*.spv
+          sudo cp /tmp/test.plan.json shader-ffi-out/plan.json
+          sudo chown "$(id -u):$(id -g)" shader-ffi-out/*
       - uses: actions/upload-artifact@v4
         with:
           name: ffi-compiled-system-shaders
@@ -137,7 +138,28 @@ jobs:
           ICD=$(find /usr/share/vulkan/icd.d -iname '*lvp*json' -type f | head -1); test -n "$ICD"
           export VK_ICD_FILENAMES="$ICD" VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation XDG_RUNTIME_DIR=/tmp
           D="$GITHUB_WORKSPACE/ivm-repo/ivm/lab/metal_cpu"
-          clang -std=c11 -Wall -Wextra -Werror -O2 "$D/pxg_vulkan_smoke.c" "$D/metal_cpu.c" -lvulkan -o /tmp/pxg_smoke
+          python3 - <<'PYPLAN'
+          import json
+          d=json.load(open('/tmp/shaders/plan.json')); p=d['plan']; c=d['commands']
+          assert d['schema']==1 and not c['push_holes'] and not c['descriptor_bytes'] and not c['root_tables']
+          assert not c['specialization'] and not c['index_bounds_pass'] and not c['discards_command_buffer']
+          assert c['draw']=={'Draw':{'first_instance':0,'first_vertex':0,'instance_count':1,'vertex_count':6}}
+          ds=p['descriptors']; assert [x['binding'] for x in ds]==list(range(8))
+          for i,x in enumerate(ds[:7]):
+              assert x['set']==0 and x['array_element']==0 and x['ty']==(6 if i==0 else 7)
+              assert x['source']['Buffer']['slot']=={'class':'Buffer','index':i,'stage':'Vertex'}
+          image=ds[7]['source']['CombinedImageSampler']; assert ds[7]['ty']==1
+          assert image['image']['Texture']['slot']=={'class':'Texture','index':0,'stage':'Fragment'}
+          assert image['sampler']['Slot']['slot']=={'class':'Sampler','index':0,'stage':'Fragment'}
+          ranges=c['descriptor_ranges']; assert [x['binding'] for x in ranges]==list(range(7))
+          for x in ranges:
+              r=x['range']; assert x['set']==0 and 0<=r['offset']<4096 and 0<r['range']<=4096-r['offset']
+          push=c['push_constants']; assert len(push)==1 and push[0]['offset']==0 and push[0]['stages']==1 and len(push[0]['bytes'])==28
+          with open('/tmp/ivm_plan_data.h','w') as f:
+              for name,values in [('ivm_plan_offsets',[x['range']['offset'] for x in ranges]),('ivm_plan_ranges',[x['range']['range'] for x in ranges]),('ivm_plan_push',push[0]['bytes'])]:
+                  f.write('static const unsigned '+name+'[] = {'+','.join(str(int(x)) for x in values)+'};\n' if name!='ivm_plan_push' else 'static const unsigned char '+name+'[] = {'+','.join(str(int(x)) for x in values)+'};\n')
+          PYPLAN
+          clang -std=c11 -Wall -Wextra -Werror -O2 -DIVM_USE_BIND_PLAN -include /tmp/ivm_plan_data.h "$D/pxg_vulkan_smoke.c" "$D/metal_cpu.c" -lvulkan -o /tmp/pxg_smoke
           for opacity in full half; do
             /tmp/pxg_smoke /tmp/shaders/pxg-0.vert.spv /tmp/shaders/pxg-0.frag.spv 0 "$opacity" 2>&1 | tee "/tmp/render-$opacity.log"
             if grep -Eq 'Validation Error|VUID-' "/tmp/render-$opacity.log"; then exit 1; fi
