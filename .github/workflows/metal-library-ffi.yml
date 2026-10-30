@@ -51,6 +51,15 @@ jobs:
           clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g crates/ivm_metal_ffi/{library_bridge.c,test_library_bridge.c} target/debug/libivm_metal_ffi.a -ldl -lpthread -lm -o "$GITHUB_WORKSPACE/test_library_bridge"
           clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g crates/ivm_metal_ffi/test_render.c target/debug/libivm_metal_ffi.a -ldl -lpthread -lm -o "$GITHUB_WORKSPACE/test_render"
           cp crates/metal2vulkan-validation/profiles/gate-lavapipe.json "$GITHUB_WORKSPACE/lavapipe.json"
+          mkdir -p "$GITHUB_WORKSPACE/ffi-runtime"
+          cp target/debug/libivm_metal_ffi.so "$GITHUB_WORKSPACE/ffi-runtime/"
+          strip --strip-debug "$GITHUB_WORKSPACE/ffi-runtime/libivm_metal_ffi.so"
+          file "$GITHUB_WORKSPACE/ffi-runtime/libivm_metal_ffi.so"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: metal-ffi-runtime-linux-arm64
+          path: ffi-runtime/libivm_metal_ffi.so
+          retention-days: 3
       - name: Install offline shader validator before receiving system shader
         run: sudo apt-get update -qq && sudo apt-get install -y -qq spirv-tools
       # Input is fetched only AFTER building public code. Running the test has no network.
