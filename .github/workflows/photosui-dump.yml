@@ -1,0 +1,66 @@
+name: photosui-dump
+# Dumps raw bytes of PhotosUICore (and optional extra images) from the dyld shared cache
+# so the Photos device-nil assert (run 40944504884, 0x19d1b2388 / 0x19cd31d48) can be disassembled offline.
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'ivm repo ref', default: 'exp/device-stub-20261027' }
+      bases: { description: 'comma-separated image bases (unslid) to dump', default: '0x19cca2000' }
+      size_mb: { description: 'MB to dump per image', default: '16' }
+permissions: { actions: read, contents: read }
+jobs:
+  dump:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: Setup disk image
+        env:
+          IVM_PAT: '${{ secrets.IVM_PAT }}'
+        run: |
+          set -uxo pipefail
+          R=$GITHUB_WORKSPACE; O=$R/dsc-out; mkdir -p "$O" /opt/dl /opt/vm
+          sudo apt-get update -qq >/dev/null 2>&1; sudo apt-get install -y -qq zstd >/dev/null 2>&1
+          pip3 install -q --break-system-packages capstone libfsapfs-python 2>/dev/null || pip3 install -q capstone libfsapfs-python
+          sudo mkdir -p /home/user/.tokens; printf %s "$IVM_PAT" | sudo tee /home/user/.tokens/github.pat > /dev/null; sudo chmod 644 /home/user/.tokens/github.pat
+          bash $R/ivm-repo/ivm/inferno/gh-release.sh get diskset-setupdone-18A5351d /opt/dl > $O/download.log 2>&1
+          zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS && rm -rf /opt/dl
+          ROOT=$(find /opt/vm -maxdepth 3 -name root -type f | head -1); echo "ROOT=$ROOT"; echo "$ROOT" > $O/root-path.txt
+      - name: Extract dyld shared cache
+        run: |
+          set -uxo pipefail
+          R=$GITHUB_WORKSPACE; O=$R/dsc-out
+          ROOT=$(cat $O/root-path.txt)
+          A="python3 $R/ivm-repo/ivm/lab/cam/tools/apfs.py $ROOT 0x6000 0"
+          $A ls /System/Library/Caches/com.apple.dyld > $O/dsc-ls.txt 2>&1; cat $O/dsc-ls.txt | head -40
+          DSC=$(sort -k2 -n -r $O/dsc-ls.txt | awk '$1 ~ /dyld_shared_cache_arm64e$/ {print $1; exit}')
+          [ -z "$DSC" ] && DSC=$(sort -k2 -n -r $O/dsc-ls.txt | awk '$1 ~ /dyld_shared_cache/ {print $1; exit}')
+          echo "DSC=$DSC"
+          $A get "/System/Library/Caches/com.apple.dyld/$(basename $DSC)" /tmp/dsc.bin
+          ls -la /tmp/dsc.bin
+      - name: Dump images
+        run: |
+          set -uxo pipefail
+          R=$GITHUB_WORKSPACE; O=$R/dsc-out
+          python3 - "$O" "${{ inputs.bases }}" "${{ inputs.size_mb }}" <<'PY'
+          import sys, os
+          O, bases, size_mb = sys.argv[1], sys.argv[2], int(sys.argv[3])
+          f = open("/tmp/dsc.bin", "rb")
+          for b in bases.split(","):
+              b = int(b.strip(), 16)
+              fo = b - 0x180000000
+              f.seek(fo); data = f.read(size_mb << 20)
+              name = os.path.join(O, "img-PhotosUI-%x.bin" % b)
+              open(name, "wb").write(data)
+              print("dumped", hex(b), len(data), "bytes ->", name)
+          PY
+          ls -la $O
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: photosui-dump-results
+          path: |
+            ${{ github.workspace }}/dsc-out/*.txt
+            ${{ github.workspace }}/dsc-out/img-*.bin
+          if-no-files-found: warn
