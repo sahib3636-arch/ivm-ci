@@ -1,0 +1,63 @@
+name: metal-library-ffi
+# Real library parser via pinned public translator. System shader input only;
+# no Photos user media. This is not a guest integration or rendering test.
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'ivm full SHA', required: true }
+      scan_run: { description: 'system metallib scan run', default: '41013651124' }
+permissions: { contents: read, actions: read }
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: sahib3636-arch/ivm
+          token: '${{ secrets.IVM_PAT }}'
+          ref: '${{ inputs.ivm_ref }}'
+          path: ivm-repo
+          persist-credentials: false
+          lfs: false
+      - name: Fetch pinned public translator source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet --filter=blob:none --no-checkout --depth=1 https://github.com/steelbrain/metal2vulkan.git m2v
+          cd m2v
+          git fetch --quiet --depth=1 origin 219f01365dc4c8eb346816c405b5b17403793764
+          git sparse-checkout init --no-cone
+          printf '%s\n' '/Cargo.toml' '/rust-toolchain.toml' '/README.md' '/crates/metal2vulkan/Cargo.toml' '/crates/metal2vulkan/build.rs' '/crates/metal2vulkan/build_support.rs' '/crates/metal2vulkan/src/' '/crates/metal2vulkan-air/Cargo.toml' '/crates/metal2vulkan-air/src/' '/crates/metal2vulkan-devtools/Cargo.toml' '/crates/metal2vulkan-devtools/src/' | git sparse-checkout set --no-cone --stdin
+          git checkout --detach 219f01365dc4c8eb346816c405b5b17403793764
+          cp -a ../ivm-repo/ivm/lab/metal_ffi crates/ivm_metal_ffi
+          python3 - <<'PY'
+          p='Cargo.toml'
+          s=open(p).read()
+          for m in ('metal2vulkan-conformance','metal2vulkan-runtime','metal2vulkan-validation'):
+              s=s.replace('    "crates/'+m+'",\n','')
+          s=s.replace('members = [', 'members = [\n    "crates/ivm_metal_ffi",', 1)
+          open(p,'w').write(s)
+          PY
+      - name: Build wrapper and C ABI test using clang
+        shell: bash
+        env: { CC: clang, CXX: clang++ }
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.98.1 --profile minimal
+          cd m2v
+          cargo +1.98.1 build -p ivm-metal-ffi
+          clang -std=c11 -Wall -Wextra -Werror crates/ivm_metal_ffi/test_library.c target/debug/libivm_metal_ffi.a -ldl -lpthread -lm -o "$GITHUB_WORKSPACE/test_library"
+      # Input is fetched only AFTER building public code. Running the test has no network.
+      - uses: actions/download-artifact@v4
+        with:
+          name: photos-metallib-scan-results
+          path: /tmp/shaders
+          run-id: '${{ inputs.scan_run }}'
+          github-token: '${{ github.token }}'
+      - name: Test ownership, bounds and function lookup without network
+        run: |
+          set -euo pipefail
+          IN=$(find /tmp/shaders -maxdepth 1 -name '*.metallib' -type f | head -1)
+          test -n "$IN"
+          sudo unshare -n -- "$GITHUB_WORKSPACE/test_library" "$IN"
