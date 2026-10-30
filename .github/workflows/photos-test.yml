@@ -146,6 +146,19 @@ jobs:
           CAM_PHOTOS=1 IVM_USET="$IVM_USET" python3 -u $R/ivm-repo/ivm/bench/bench.py /opt/b/eng /opt/qd "$VMD" "$O" "photos-test" "4" "3G" "512" 2>&1 | tee $O/bench.log
           echo "=== Photos results ==="
           grep -E "photos_grid_reached|photos_state|photos_launch_tries" $O/bench.log | tail -5
+      - name: Summarize Metal diagnostic text (not a rendering verdict)
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          R="$GITHUB_WORKSPACE/ivm-repo/ivm/lab/tools/metal_trace_report.py"
+          S="$GITHUB_WORKSPACE/bench-out/photos-test/serial.log"
+          B="$GITHUB_WORKSPACE/bench-out/bench.log"
+          if [ -f "$R" ] && [ -f "$S" ] && [ -f "$B" ]; then
+            python3 "$R" "$S" --bench "$B" | tee "$GITHUB_WORKSPACE/bench-out/metal-trace-report.json"
+          else
+            echo 'Metal text report unavailable for this run/ref.'
+          fi
       - name: Photos store check (guest DB committed to the root image)
         if: always()
         run: |
@@ -164,6 +177,7 @@ jobs:
           name: photos-test-results
           path: |
             ${{ github.workspace }}/bench-out/bench.log
+            ${{ github.workspace }}/bench-out/metal-trace-report.json
             ${{ github.workspace }}/bench-out/**/serial.log
             ${{ github.workspace }}/bench-out/**/dscwin.*
             ${{ github.workspace }}/bench-out/build.log
