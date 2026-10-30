@@ -1,0 +1,54 @@
+name: metal-shader-sweep
+# Offline translator probe only; does not modify the guest, run Photos, or export user media.
+on:
+  workflow_dispatch:
+    inputs:
+      scan_run: { description: 'photos-metallib-scan run ID', default: '41013651124' }
+      translator_run: { description: 'metal-shader-probe build run ID', default: '41013986244' }
+permissions: { contents: read, actions: read }
+jobs:
+  sweep:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: metal-translator
+          path: /tmp/m2v
+          run-id: '${{ inputs.translator_run }}'
+          github-token: '${{ github.token }}'
+      - uses: actions/download-artifact@v4
+        with:
+          name: photos-metallib-scan-results
+          path: /tmp/shaders
+          run-id: '${{ inputs.scan_run }}'
+          github-token: '${{ github.token }}'
+      - name: Probe basic PXG pipeline constants against lavapipe profile
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq >/dev/null 2>&1
+          sudo apt-get install -y -qq spirv-tools >/dev/null 2>&1
+          chmod +x /tmp/m2v/metal2vulkan
+          mkdir -p "$GITHUB_WORKSPACE/shader-results"
+          P="$GITHUB_WORKSPACE/shader-results"
+          IN=$(find /tmp/shaders -maxdepth 1 -name '*.metallib' -type f | head -1); test -n "$IN"
+          # AIR metadata names five signed-int function constants 0..4. Values
+          # below are exploration, not yet observed from the Photos runtime.
+          for flags in 0 1 2 4 8 16; do
+            set +e
+            timeout 120 sudo unshare -n -- /tmp/m2v/metal2vulkan "$IN" "$P/pxg-$flags.spv" --profile /tmp/m2v/profile.json --function vertex_main --fragment fragment_main --color-format 0:BGRA8Unorm --constant "0:int:$flags" --constant 1:int:0 --constant 2:int:0 --constant 3:int:0 --constant 4:int:0 --emit-meta "$P/pxg-$flags.json" > "$P/flags-$flags.log" 2>&1
+            RC=$?
+            set -e
+            echo "translator_exit=$RC" | tee -a "$P/flags-$flags.log"
+            cat "$P/flags-$flags.log"
+            if [ "$RC" = 0 ]; then
+              for f in "$P/pxg-$flags".*.spv; do test -f "$f"; spirv-val "$f"; done
+            fi
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: photos-shader-sweep-results
+          path: shader-results/
+          if-no-files-found: warn
+          retention-days: 7
