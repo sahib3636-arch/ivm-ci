@@ -61,3 +61,5 @@ jobs:
           /tmp/test_qemu_label
           clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g test_qemu_limitsdiscovery.c -o /tmp/test_qemu_limitsdiscovery
           /tmp/test_qemu_limitsdiscovery
+          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g test_qemu_libraryprobe.c -o /tmp/test_qemu_libraryprobe
+          /tmp/test_qemu_libraryprobe
