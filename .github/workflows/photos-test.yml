@@ -17,7 +17,7 @@ on:
       ffi_run: { description: 'Optional ARM FFI workflow run ID for network-isolated guest library parse diagnostic', default: '' }
       library_probe: { description: '1 = read default.metallib header in guest; system code only', default: '0' }
       limits_discovery: { description: '1 = diagnostic nil-limits instruction bypass, NOT a Metal implementation', default: '0' }
-      live_library: { description: '1 = experimental parsed library and named functions; needs ffi_run and library_probe', default: '0' }
+      live_library: { description: '1 = parsed library; probe = also inspect specialization selector; needs ffi_run and library_probe', default: '0' }
       live_command: { description: '1 = experimental empty host command buffers, requires live_queue=1', default: '0' }
       live_queue: { description: '1 = experimental live host command queue, requires metal_single=1', default: '0' }
       live_texture: { description: '1 = limited guest-backed host texture experiment', default: '0' }
@@ -96,7 +96,8 @@ jobs:
           IVM_UTRACE_BT: '1'
           IVM_THREAD: "${{ inputs.metal_single == '1' && 'single' || 'multi' }}"
           IVM_METAL_LIBRARY_PROBE: "${{ inputs.library_probe }}"
-          IVM_METAL_LIVE_LIBRARY: "${{ inputs.live_library }}"
+          IVM_METAL_LIVE_LIBRARY: "${{ inputs.live_library == 'probe' && '1' || inputs.live_library }}"
+          IVM_METAL_CONSTANT_PROBE: "${{ inputs.live_library == 'probe' && '1' || '0' }}"
           IVM_METAL_FFI_PROBE_PATH: "${{ inputs.ffi_run != '' && format('{0}/metal-ffi/libivm_metal_ffi.so', github.workspace) || '' }}"
           IVM_METAL_LIMITS_DISCOVERY: "${{ inputs.limits_discovery }}"
           IVM_METAL_LIVE_TEXTURE: "${{ inputs.live_texture }}"
