@@ -93,9 +93,14 @@ jobs:
           cd /tmp/nettle-3.10.1 && ./configure --prefix=/usr/local --disable-documentation >nettle-conf.log && make -j"$(nproc)" >nettle-make.log && sudo make install >/dev/null && sudo ldconfig && cd "$R"
           echo "nettle now: $(pkg-config --modversion nettle)"
           pipx install meson==1.7.0 || pip3 install --user meson==1.7.0
-          sudo mkdir -p /home/user/.tokens; printf %s "$IVM_PAT" | sudo tee /home/user/.tokens/github.pat > /dev/null; sudo chmod 644 /home/user/.tokens/github.pat
+          # Private release credentials are readable only by the runner and are
+          # removed immediately after download, including on an interrupted step.
+          sudo install -d -m 700 -o "$(id -u)" -g "$(id -g)" /home/user/.tokens
+          umask 077; printf %s "$IVM_PAT" > /home/user/.tokens/github.pat
+          trap 'rm -f /home/user/.tokens/github.pat' EXIT
           # Download diskset
           bash $R/ivm-repo/ivm/inferno/gh-release.sh get "${{ inputs.diskset }}" /opt/dl > $O/download.log 2>&1
+          rm -f /home/user/.tokens/github.pat; trap - EXIT
           zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS && rm -rf /opt/dl
           VMD=$(dirname "$(ls /opt/vm/*/entry.json | head -1)"); echo "VM=$VMD"
           # s44 CoreData fix (see tools/photos_db_fix.py): in the setupdone base, Z_PRIMARYKEY.Z_MAX is 0 for the
