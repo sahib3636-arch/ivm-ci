@@ -71,6 +71,8 @@ jobs:
           /tmp/test_qemu_constantprobe
           clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I../metal_ffi test_qemu_specialization.c -o /tmp/test_qemu_specialization
           /tmp/test_qemu_specialization
+          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -DIVML_NO_STATIC_BACKEND -fsanitize=address,undefined -g -I../metal_ffi ../metal_ffi/library_bridge.c test_qemu_specializelive.c -ldl -o /tmp/test_qemu_specializelive
+          /tmp/test_qemu_specializelive
           clang -std=c11 -Wall -Wextra -Werror -DIVML_NO_STATIC_BACKEND -fsanitize=address,undefined -g ../metal_ffi/library_bridge.c ../metal_ffi/test_dynamic_bridge.c -o /tmp/test_dynamic_bridge
           /tmp/test_dynamic_bridge
           clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I../metal_ffi test_qemu_libraryprobe.c -ldl -o /tmp/test_qemu_libraryprobe
