@@ -24,3 +24,5 @@ jobs:
           /tmp/metal_cpu_test
           clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g metal_cpu.c metal_bridge.c test_bridge.c -o /tmp/metal_bridge_test
           /tmp/metal_bridge_test
+          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_memory.c -o /tmp/test_qemu_memory
+          /tmp/test_qemu_memory
