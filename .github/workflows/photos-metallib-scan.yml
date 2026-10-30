@@ -1,0 +1,42 @@
+name: photos-metallib-scan
+# Read-only: scans only selected system app/framework bundles, never user photos.
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'ivm full SHA or branch', default: 'exp/device-stub-20261027' }
+permissions: { contents: read, actions: read }
+jobs:
+  scan:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: Setup system disk
+        env:
+          IVM_PAT: '${{ secrets.IVM_PAT }}'
+        run: |
+          set -euo pipefail
+          R=$GITHUB_WORKSPACE; O=$R/metal-scan; mkdir -p "$O" /opt/dl /opt/vm
+          sudo apt-get update -qq >/dev/null 2>&1; sudo apt-get install -y -qq zstd >/dev/null 2>&1
+          pip3 install -q --break-system-packages libfsapfs-python
+          sudo mkdir -p /home/user/.tokens; printf %s "$IVM_PAT" | sudo tee /home/user/.tokens/github.pat > /dev/null; sudo chmod 644 /home/user/.tokens/github.pat
+          bash "$R/ivm-repo/ivm/inferno/gh-release.sh" get diskset-setupdone-18A5351d /opt/dl > "$O/download.log" 2>&1
+          zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS && rm -rf /opt/dl
+          ROOT=$(find /opt/vm -maxdepth 3 -name root -type f | head -1); test -n "$ROOT"; echo "$ROOT" > "$O/root-path.txt"
+      - name: Scan system framework shader libraries
+        run: |
+          set -euo pipefail
+          R=$GITHUB_WORKSPACE; O=$R/metal-scan
+          python3 "$R/ivm-repo/ivm/lab/tools/photos_metallib_scan.py" "$(cat "$O/root-path.txt")" "$O" > "$O/scan.log"
+          cat "$O/scan.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: photos-metallib-scan-results
+          path: |
+            ${{ github.workspace }}/metal-scan/manifest.json
+            ${{ github.workspace }}/metal-scan/*.metallib
+            ${{ github.workspace }}/metal-scan/scan.log
+          if-no-files-found: warn
+          retention-days: 7
