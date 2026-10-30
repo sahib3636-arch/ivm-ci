@@ -33,7 +33,7 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false, persist-credentials: false }
       - name: Optional kernel trap (s42, s43 brk)
         if: ${{ inputs.ktrace == '1' || inputs.ktrace == '2' }}
         run: |

@@ -16,6 +16,7 @@ jobs:
           ref: '${{ inputs.ivm_ref }}'
           path: ivm-repo
           lfs: false
+          persist-credentials: false
       - name: Compile and test isolated CPU primitives with clang sanitizers
         working-directory: ivm-repo/ivm/lab/metal_cpu
         run: |
