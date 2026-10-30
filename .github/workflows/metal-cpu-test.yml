@@ -28,3 +28,4 @@ jobs:
           /tmp/test_qemu_memory
           clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_callstate.c -o /tmp/test_qemu_callstate
           /tmp/test_qemu_callstate
+          (cd ../../bench && python3 -m unittest -v test_photos_vision)
