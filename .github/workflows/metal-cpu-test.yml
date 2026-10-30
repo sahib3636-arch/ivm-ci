@@ -22,3 +22,5 @@ jobs:
           set -euxo pipefail
           clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g metal_cpu.c test_metal_cpu.c -o /tmp/metal_cpu_test
           /tmp/metal_cpu_test
+          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g metal_cpu.c metal_bridge.c test_bridge.c -o /tmp/metal_bridge_test
+          /tmp/metal_bridge_test
