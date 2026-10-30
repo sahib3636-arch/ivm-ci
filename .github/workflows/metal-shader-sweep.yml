@@ -34,7 +34,7 @@ jobs:
           IN=$(find /tmp/shaders -maxdepth 1 -name '*.metallib' -type f | head -1); test -n "$IN"
           # AIR metadata names five signed-int function constants 0..4. Values
           # below are exploration, not yet observed from the Photos runtime.
-          for flags in 0 1 2 4 8 16; do
+          for flags in 0 1 2 4 8 16 32 256 4096 8192 16384 32768; do
             set +e
             timeout 120 sudo unshare -n -- /tmp/m2v/metal2vulkan "$IN" "$P/pxg-$flags.spv" --profile /tmp/m2v/profile.json --function vertex_main --fragment fragment_main --color-format 0:BGRA8Unorm --constant "0:int:$flags" --constant 1:int:0 --constant 2:int:0 --constant 3:int:0 --constant 4:int:0 --emit-meta "$P/pxg-$flags.json" > "$P/flags-$flags.log" 2>&1
             RC=$?
