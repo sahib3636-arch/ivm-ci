@@ -60,6 +60,12 @@ jobs:
           path: /tmp/shaders
           run-id: '${{ inputs.scan_run }}'
           github-token: '${{ github.token }}'
+      - uses: actions/download-artifact@v4
+        with:
+          name: photos-shader-sweep-results
+          path: /tmp/reference-shaders
+          run-id: '41014290466'
+          github-token: '${{ github.token }}'
       - name: Test ownership, bounds and function lookup without network
         run: |
           set -euo pipefail
@@ -67,7 +73,20 @@ jobs:
           test -n "$IN"
           sudo unshare -n -- "$GITHUB_WORKSPACE/test_library" "$IN"
           sudo unshare -n -- "$GITHUB_WORKSPACE/test_library_bridge" "$IN"
-          sudo unshare -n -- "$GITHUB_WORKSPACE/test_render" "$IN" "$GITHUB_WORKSPACE/lavapipe.json" /tmp/test.vert.spv /tmp/test.frag.spv
+          sudo unshare -n -- "$GITHUB_WORKSPACE/test_render" "$IN" "$GITHUB_WORKSPACE/lavapipe.json" /tmp/test.vert.spv /tmp/test.frag.spv /tmp/test.metadata.json
+          python3 - <<'PYCOMPARE'
+          import json
+          with open('/tmp/test.metadata.json') as f: actual=json.load(f)
+          with open('/tmp/reference-shaders/pxg-0.json') as f: reference=json.load(f)
+          for field in ('layout','interface','dependencies','vertex_input','graphics'):
+              assert actual[field] == reference[field], field
+          assert len(actual['stages']) == len(reference['stages']) == 2
+          for a,b in zip(actual['stages'],reference['stages']):
+              for field in ('entry_point','specialization','required_subgroup_size','stage_flags','precision_notes'):
+                  assert a[field] == b[field], field
+          PYCOMPARE
+          cmp /tmp/test.vert.spv /tmp/reference-shaders/pxg-0.vert.spv
+          cmp /tmp/test.frag.spv /tmp/reference-shaders/pxg-0.frag.spv
           # The pinned profile enables uniformBufferStandardLayout. The consumer
           # MUST enable the same feature; validation without it correctly fails.
           python3 - <<'PYCODE'
