@@ -53,6 +53,9 @@ jobs:
               patterns=('^_objc_setAssociatedObject$' '^_objc_getAssociatedObject$' '^_objc_removeAssociatedObjects$') ;;
             allocator_free)
               patterns=('^_(free.*|malloc_zone_free.*|szone_free.*|objc_destructInstance|object_dispose)$') ;;
+            watchdog)
+              # Diagnostic only: locate methods/classes before considering a scoped CI fixture-timeout experiment.
+              patterns=('(?i)(FBSProcessWatchdog|FBApplicationProcessWatchdogPolicy|watchdogPolicyForProcess)') ;;
             iosurface)
               patterns=('^_IOSurface.*$' '^_CF(Retain|Release)$') ;;
             *) echo "unsupported symbol scope" >&2; exit 2 ;;
