@@ -73,7 +73,8 @@ jobs:
           test -n "$IN"
           sudo unshare -n -- "$GITHUB_WORKSPACE/test_library" "$IN"
           sudo unshare -n -- "$GITHUB_WORKSPACE/test_library_bridge" "$IN"
-          sudo unshare -n -- "$GITHUB_WORKSPACE/test_render" "$IN" "$GITHUB_WORKSPACE/lavapipe.json" /tmp/test.vert.spv /tmp/test.frag.spv /tmp/test.metadata.json
+          sudo unshare -n -- "$GITHUB_WORKSPACE/test_render" "$IN" "$GITHUB_WORKSPACE/lavapipe.json" /tmp/test.vert.spv /tmp/test.frag.spv /tmp/test.metadata.json /tmp/test.plan.json
+          cat /tmp/test.plan.json
           python3 - <<'PYCOMPARE'
           import json
           with open('/tmp/test.metadata.json') as f: actual=json.load(f)
