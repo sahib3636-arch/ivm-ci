@@ -14,6 +14,7 @@ on:
       photos_via: { description: "'' = Photos icon/Spotlight; viewer = open Photos from the Camera thumbnail", default: '' }
       photos_launch: { description: "'' = Photos home-icon tap (E13 config, reproduces the crash); spotlight = Spotlight search", default: '' }
       metal_single: { description: '1 = single TCG thread for opt-in experimental live buffer test', default: '0' }
+      live_queue: { description: '1 = experimental live host command queue, requires metal_single=1', default: '0' }
       live_buffer: { description: '1 = experimental live shared Metal buffer, requires metal_single=1', default: '0' }
       buffer_probe: { description: '1 = synthetic buffer allocation/copy diagnostic, not a Metal buffer', default: '0' }
       metal_args: { description: '1 = trace buffer request sizes/options, no guest contents', default: '0' }
@@ -82,6 +83,7 @@ jobs:
           IVM_UTRACE_BT: '1'
           IVM_THREAD: "${{ inputs.metal_single == '1' && 'single' || 'multi' }}"
           IVM_METAL_LIVE_BUFFER: "${{ inputs.live_buffer }}"
+          IVM_METAL_LIVE_QUEUE: "${{ inputs.live_queue }}"
           IVM_METAL_BUFFER_PROBE: "${{ inputs.buffer_probe }}"
           IVM_MARGS: "${{ inputs.metal_args }}"
           IVM_OSLOG: "${{ inputs.oslog }}"

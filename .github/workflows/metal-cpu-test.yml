@@ -53,3 +53,5 @@ jobs:
           /tmp/test_qemu_bufferprobe_link
           clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_bufferlive.c -o /tmp/test_qemu_bufferlive
           /tmp/test_qemu_bufferlive
+          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_queuelive.c -o /tmp/test_qemu_queuelive
+          /tmp/test_qemu_queuelive
