@@ -41,9 +41,19 @@ jobs:
           vulkaninfo --summary > "$GITHUB_WORKSPACE/pxg-results/vulkan.txt" 2>&1
           clang -std=c11 -Wall -Wextra -Werror -O2 "$GITHUB_WORKSPACE/ivm-repo/ivm/lab/metal_cpu/pxg_vulkan_smoke.c" -lvulkan -o /tmp/pxg_smoke
           for flag in 0 1 2 4 8; do
-            /tmp/pxg_smoke "/tmp/shaders/pxg-$flag.vert.spv" "/tmp/shaders/pxg-$flag.frag.spv" "$flag" 2>&1 | tee "$GITHUB_WORKSPACE/pxg-results/render-$flag.txt"
-            if grep -Eq 'Validation Error|VUID-' "$GITHUB_WORKSPACE/pxg-results/render-$flag.txt"; then exit 1; fi
+            for opacity in full half; do
+              log="$GITHUB_WORKSPACE/pxg-results/render-$flag-$opacity.txt"
+              /tmp/pxg_smoke "/tmp/shaders/pxg-$flag.vert.spv" "/tmp/shaders/pxg-$flag.frag.spv" "$flag" "$opacity" 2>&1 | tee "$log"
+              if grep -Eq 'Validation Error|VUID-' "$log"; then exit 1; fi
+            done
           done
+          set +e
+          /tmp/pxg_smoke /tmp/shaders/pxg-1.vert.spv /tmp/shaders/pxg-1.frag.spv 0 full > "$GITHUB_WORKSPACE/pxg-results/negative.txt" 2>&1
+          rc=$?
+          set -e
+          test "$rc" -eq 1
+          grep -q 'FAIL: all sampled pixels' "$GITHUB_WORKSPACE/pxg-results/negative.txt"
+          if grep -Eq 'Validation Error|VUID-' "$GITHUB_WORKSPACE/pxg-results/negative.txt"; then exit 1; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
