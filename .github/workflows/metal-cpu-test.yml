@@ -65,6 +65,8 @@ jobs:
           clang -std=c11 -Wall -Wextra -Werror -fPIC -shared test_ffi_plugin.c -o /tmp/ffi-mock.so
           clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g test_qemu_ffiprobe.c -ldl -o /tmp/test_qemu_ffiprobe
           /tmp/test_qemu_ffiprobe /tmp/ffi-mock.so
+          clang -std=c11 -Wall -Wextra -Werror -DIVML_NO_STATIC_BACKEND -fsanitize=address,undefined -g ../metal_ffi/library_bridge.c ../metal_ffi/test_dynamic_bridge.c -o /tmp/test_dynamic_bridge
+          /tmp/test_dynamic_bridge
           clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g test_qemu_libraryprobe.c -ldl -o /tmp/test_qemu_libraryprobe
           /tmp/test_qemu_libraryprobe
           clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_texturelive.c -ldl -o /tmp/test_qemu_texturelive
