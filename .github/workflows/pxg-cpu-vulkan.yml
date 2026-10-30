@@ -40,8 +40,10 @@ jobs:
           export VK_ICD_FILENAMES="$ICD" VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation XDG_RUNTIME_DIR=/tmp
           vulkaninfo --summary > "$GITHUB_WORKSPACE/pxg-results/vulkan.txt" 2>&1
           clang -std=c11 -Wall -Wextra -Werror -O2 "$GITHUB_WORKSPACE/ivm-repo/ivm/lab/metal_cpu/pxg_vulkan_smoke.c" -lvulkan -o /tmp/pxg_smoke
-          /tmp/pxg_smoke /tmp/shaders/pxg-0.vert.spv /tmp/shaders/pxg-0.frag.spv 2>&1 | tee "$GITHUB_WORKSPACE/pxg-results/render.txt"
-          if grep -Eq 'Validation Error|VUID-' "$GITHUB_WORKSPACE/pxg-results/render.txt"; then exit 1; fi
+          for flag in 0 1 2 4 8; do
+            /tmp/pxg_smoke "/tmp/shaders/pxg-$flag.vert.spv" "/tmp/shaders/pxg-$flag.frag.spv" "$flag" 2>&1 | tee "$GITHUB_WORKSPACE/pxg-results/render-$flag.txt"
+            if grep -Eq 'Validation Error|VUID-' "$GITHUB_WORKSPACE/pxg-results/render-$flag.txt"; then exit 1; fi
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
