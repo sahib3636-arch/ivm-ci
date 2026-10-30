@@ -101,6 +101,7 @@ jobs:
           IVM_METAL_LIVE_SPECIALIZATION: "${{ (inputs.live_library == 'special' || inputs.live_library == 'special-gated') && '1' || '0' }}"
           IVM_METAL_GATE_FILE: "${{ inputs.live_library == 'special-gated' && '/tmp/ivm-metal-fixture-gate' || '' }}"
           IVM_METAL_PIPELINE_PROBE: "${{ inputs.live_library == 'special-gated' && '1' || '0' }}"
+          IVM_METAL_COMPILE_PROBE_PROFILE: "${{ inputs.live_library == 'special-gated' && format('{0}/metal-probe-profile.json', github.workspace) || '' }}"
           IVM_METAL_FFI_PROBE_PATH: "${{ inputs.ffi_run != '' && format('{0}/metal-ffi/libivm_metal_ffi.so', github.workspace) || '' }}"
           IVM_METAL_LIMITS_DISCOVERY: "${{ inputs.limits_discovery }}"
           IVM_METAL_LIVE_TEXTURE: "${{ inputs.live_texture }}"
@@ -133,6 +134,11 @@ jobs:
           bash $R/ivm-repo/ivm/inferno/gh-release.sh get "${{ inputs.diskset }}" /opt/dl > $O/download.log 2>&1
           rm -f /home/user/.tokens/github.pat; trap - EXIT
           unset IVM_PAT GH_TOKEN GITHUB_TOKEN ACTIONS_RUNTIME_TOKEN ACTIONS_ID_TOKEN_REQUEST_TOKEN
+          if [ -n "$IVM_METAL_COMPILE_PROBE_PROFILE" ]; then
+            # Public pinned synthetic profile: compile-only diagnostics, NOT the actual device capabilities.
+            curl -fsSL --retry 3 -o "$IVM_METAL_COMPILE_PROBE_PROFILE" 'https://raw.githubusercontent.com/steelbrain/metal2vulkan/219f01365dc4c8eb346816c405b5b17403793764/crates/metal2vulkan-validation/profiles/gate-lavapipe.json'
+            echo '20fcd5fcc94b0776020ad34d8364a0e818b7ea0ee2f2db1b5da15af840ebd621  '"$IVM_METAL_COMPILE_PROBE_PROFILE" | sha256sum -c -
+          fi
           zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS && rm -rf /opt/dl
           VMD=$(dirname "$(ls /opt/vm/*/entry.json | head -1)"); echo "VM=$VMD"
           # s44 CoreData fix (see tools/photos_db_fix.py): in the setupdone base, Z_PRIMARYKEY.Z_MAX is 0 for the
