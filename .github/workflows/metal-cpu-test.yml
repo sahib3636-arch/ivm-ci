@@ -1,0 +1,24 @@
+name: metal-cpu-test
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'ivm full commit SHA or branch', default: 'exp/device-stub-20261027' }
+permissions: { contents: read }
+jobs:
+  primitives:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: sahib3636-arch/ivm
+          token: '${{ secrets.IVM_PAT }}'
+          ref: '${{ inputs.ivm_ref }}'
+          path: ivm-repo
+          lfs: false
+      - name: Compile and test isolated CPU primitives with clang sanitizers
+        working-directory: ivm-repo/ivm/lab/metal_cpu
+        run: |
+          set -euxo pipefail
+          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g metal_cpu.c test_metal_cpu.c -o /tmp/metal_cpu_test
+          /tmp/metal_cpu_test
