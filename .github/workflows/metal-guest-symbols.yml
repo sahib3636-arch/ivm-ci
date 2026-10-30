@@ -3,6 +3,7 @@ name: metal-guest-symbols
 on:
   workflow_dispatch:
     inputs:
+      scope: { description: 'allocation or iosurface system symbols', default: 'allocation' }
       ivm_ref: { description: 'ivm full SHA', default: 'exp/device-stub-20261027' }
 permissions: { contents: read, actions: read }
 jobs:
@@ -21,6 +22,7 @@ jobs:
       - name: Open system disk and inspect guest allocation symbols
         env:
           IVM_PAT: '${{ secrets.IVM_PAT }}'
+          SYMBOL_SCOPE: '${{ inputs.scope }}'
         shell: bash
         run: |
           set -euo pipefail
@@ -40,7 +42,14 @@ jobs:
           DSC=$(sort -k2 -n -r "$O/dsc-ls.txt" | awk '$1 ~ /dyld_shared_cache_arm64e$/ {print $1; exit}')
           test -n "$DSC"
           python3 "$A" "$ROOT" 0x6000 0 get "/System/Library/Caches/com.apple.dyld/$(basename "$DSC")" /tmp/ivm-system-dsc.bin
-          python3 "$R/ivm-repo/ivm/lab/tools/dsc-find.py" /tmp/ivm-system-dsc.bin '^_malloc$' '^_calloc$' '^_free$' '^_malloc_size$' '^_class_getInstanceSize$' '^_class_createInstance$' '^_object_getClass$' '^_objc_retain$' '^_objc_release$' '^_objc_storeStrong$' > "$O/find.txt"
+          case "$SYMBOL_SCOPE" in
+            allocation)
+              patterns=('^_malloc$' '^_calloc$' '^_free$' '^_malloc_size$' '^_class_getInstanceSize$' '^_class_createInstance$' '^_object_getClass$' '^_objc_retain$' '^_objc_release$' '^_objc_storeStrong$') ;;
+            iosurface)
+              patterns=('^_IOSurface(Lookup|GetID|GetBaseAddress|GetAllocSize|GetWidth|GetHeight|GetBytesPerRow|GetPixelFormat|GetPlaneCount|GetBaseAddressOfPlane|GetBytesPerRowOfPlane|GetHeightOfPlane|GetWidthOfPlane|Lock|Unlock|GetSeed|Create)$' '^_CF(Retain|Release)$') ;;
+            *) echo "unsupported symbol scope" >&2; exit 2 ;;
+          esac
+          python3 "$R/ivm-repo/ivm/lab/tools/dsc-find.py" /tmp/ivm-system-dsc.bin "${patterns[@]}" > "$O/find.txt"
           cat "$O/find.txt"
       - uses: actions/upload-artifact@v4
         if: always()
