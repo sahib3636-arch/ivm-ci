@@ -1,0 +1,65 @@
+name: metal-ffi-android
+# Cross-build only. Does not run a device, emulator, Photos, or Vulkan.
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'ivm full SHA', required: true }
+permissions: { contents: read }
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: sahib3636-arch/ivm
+          token: '${{ secrets.IVM_PAT }}'
+          ref: '${{ inputs.ivm_ref }}'
+          path: ivm-repo
+          persist-credentials: false
+          lfs: false
+      - name: Fetch pinned public translator
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet --filter=blob:none --no-checkout --depth=1 https://github.com/steelbrain/metal2vulkan.git m2v
+          cd m2v
+          git fetch --quiet --depth=1 origin 219f01365dc4c8eb346816c405b5b17403793764
+          git sparse-checkout init --no-cone
+          printf '%s\n' '/Cargo.toml' '/rust-toolchain.toml' '/README.md' '/crates/metal2vulkan/Cargo.toml' '/crates/metal2vulkan/build.rs' '/crates/metal2vulkan/build_support.rs' '/crates/metal2vulkan/src/' '/crates/metal2vulkan-air/Cargo.toml' '/crates/metal2vulkan-air/src/' '/crates/metal2vulkan-devtools/Cargo.toml' '/crates/metal2vulkan-devtools/src/' | git sparse-checkout set --no-cone --stdin
+          git checkout --detach 219f01365dc4c8eb346816c405b5b17403793764
+          cp -a ../ivm-repo/ivm/lab/metal_ffi crates/ivm_metal_ffi
+          python3 - <<'PY'
+          p='Cargo.toml';s=open(p).read()
+          for m in ('metal2vulkan-conformance','metal2vulkan-runtime','metal2vulkan-validation'):
+              s=s.replace('    "crates/'+m+'",\n','')
+          s=s.replace('members = [', 'members = [\n    "crates/ivm_metal_ffi",',1)
+          open(p,'w').write(s)
+          PY
+      - name: Cross-build for Android arm64 API 34 with clang
+        shell: bash
+        run: |
+          set -euo pipefail
+          NDK=${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME:-}}
+          test -d "$NDK"; TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          test -x "$TC/aarch64-linux-android34-clang"
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup target add --toolchain 1.98.1 aarch64-linux-android
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TC/aarch64-linux-android34-clang"
+          export CC_aarch64_linux_android="$TC/aarch64-linux-android34-clang"
+          cd m2v
+          cargo +1.98.1 build -p ivm-metal-ffi --target aarch64-linux-android
+          SO=target/aarch64-linux-android/debug/libivm_metal_ffi.so
+          test -s "$SO"
+          "$TC/llvm-readelf" -h "$SO" | grep -E 'Class:.*ELF64|Machine:.*AArch64'
+          "$TC/llvm-readelf" -d "$SO" | grep NEEDED
+          "$TC/llvm-nm" -D --defined-only "$SO" | grep -E ' ivm_(library_create|library_find|render_compile|render_plan_draw_json)$'
+          test "$("$TC/llvm-nm" -D --defined-only "$SO" | grep -Ec ' ivm_(library_create|library_find|render_compile|render_plan_draw_json)$')" = 4
+          mkdir -p "$GITHUB_WORKSPACE/android-runtime"
+          cp "$SO" "$GITHUB_WORKSPACE/android-runtime/"
+          "$TC/llvm-strip" --strip-debug "$GITHUB_WORKSPACE/android-runtime/libivm_metal_ffi.so"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: metal-ffi-runtime-android-arm64-crossbuild-only
+          path: android-runtime/libivm_metal_ffi.so
+          retention-days: 3
