@@ -34,3 +34,5 @@ jobs:
           /tmp/test_context_policy
           clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_allocprobe.c -o /tmp/test_qemu_allocprobe
           /tmp/test_qemu_allocprobe
+          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g metal_cpu.c metal_bridge.c test_qemu_bridge.c -o /tmp/test_qemu_bridge
+          /tmp/test_qemu_bridge
