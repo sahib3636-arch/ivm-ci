@@ -1,0 +1,51 @@
+name: pxg-cpu-vulkan
+# Offline synthetic sprite test of the translated system PXG shaders, not a Photos app test.
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'ivm full SHA or branch', default: 'exp/device-stub-20261027' }
+      shader_run: { description: 'metal-shader-sweep run ID', default: '41014290466' }
+permissions: { contents: read, actions: read }
+jobs:
+  test:
+    runs-on: ubuntu-24.04-arm
+    container: ubuntu:26.04
+    timeout-minutes: 25
+    steps:
+      - name: Install clang and software Vulkan
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ca-certificates git clang libvulkan-dev mesa-vulkan-drivers vulkan-tools vulkan-validationlayers
+      - uses: actions/checkout@v4
+        with:
+          repository: sahib3636-arch/ivm
+          token: '${{ secrets.IVM_PAT }}'
+          ref: '${{ inputs.ivm_ref }}'
+          path: ivm-repo
+          persist-credentials: false
+          lfs: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: photos-shader-sweep-results
+          path: /tmp/shaders
+          run-id: '${{ inputs.shader_run }}'
+          github-token: '${{ github.token }}'
+      - name: Render synthetic textured sprite with validation enabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/pxg-results"
+          ICD=$(find /usr/share/vulkan/icd.d -iname '*lvp*json' -type f | head -1)
+          test -n "$ICD"
+          export VK_ICD_FILENAMES="$ICD" VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation XDG_RUNTIME_DIR=/tmp
+          vulkaninfo --summary > "$GITHUB_WORKSPACE/pxg-results/vulkan.txt" 2>&1
+          clang -std=c11 -Wall -Wextra -Werror -O2 "$GITHUB_WORKSPACE/ivm-repo/ivm/lab/metal_cpu/pxg_vulkan_smoke.c" -lvulkan -o /tmp/pxg_smoke
+          /tmp/pxg_smoke /tmp/shaders/pxg-0.vert.spv /tmp/shaders/pxg-0.frag.spv 2>&1 | tee "$GITHUB_WORKSPACE/pxg-results/render.txt"
+          if grep -Eq 'Validation Error|VUID-' "$GITHUB_WORKSPACE/pxg-results/render.txt"; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pxg-cpu-vulkan-results
+          path: pxg-results/
+          if-no-files-found: warn
+          retention-days: 7
