@@ -1,0 +1,57 @@
+name: metal-runtime-smoke
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'ivm full SHA', default: 'exp/device-stub-20261027' }
+permissions: { contents: read }
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: sahib3636-arch/ivm
+          token: '${{ secrets.IVM_PAT }}'
+          ref: '${{ inputs.ivm_ref }}'
+          path: ivm-repo
+          lfs: false
+          persist-credentials: false
+      - name: Install clang and software Vulkan
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang libvulkan-dev mesa-vulkan-drivers vulkan-validationlayers
+          rustup toolchain install 1.98.1 --profile minimal
+      - name: Fetch and build pinned public runtime
+        env: { CC: clang, CXX: clang++, CARGO_BUILD_JOBS: '2' }
+        run: |
+          set -euo pipefail
+          git clone --quiet --filter=blob:none --no-checkout --depth=1 https://github.com/steelbrain/metal2vulkan.git m2v
+          cd m2v
+          git fetch --quiet --depth=1 origin 219f01365dc4c8eb346816c405b5b17403793764
+          git sparse-checkout init --no-cone
+          printf '%s\n' '/Cargo.toml' '/rust-toolchain.toml' '/README.md' '/crates/metal2vulkan/Cargo.toml' '/crates/metal2vulkan/build.rs' '/crates/metal2vulkan/build_support.rs' '/crates/metal2vulkan/src/' '/crates/metal2vulkan-air/Cargo.toml' '/crates/metal2vulkan-air/src/' '/crates/metal2vulkan-devtools/Cargo.toml' '/crates/metal2vulkan-devtools/src/' '/crates/metal2vulkan-runtime/Cargo.toml' '/crates/metal2vulkan-runtime/src/' | git sparse-checkout set --no-cone --stdin
+          git checkout --detach 219f01365dc4c8eb346816c405b5b17403793764
+          cp -a ../ivm-repo/ivm/lab/metal_runtime_probe crates/ivm-metal-runtime-probe
+          python3 - <<'PY'
+          p='Cargo.toml';s=open(p).read()
+          for m in ('metal2vulkan-conformance','metal2vulkan-validation'):
+              s=s.replace('    "crates/'+m+'",\n','')
+          s=s.replace('members = [', 'members = [\n    "crates/ivm-metal-runtime-probe",',1)
+          open(p,'w').write(s)
+          PY
+          cargo +1.98.1 build -p ivm-metal-runtime-probe
+      - name: Clear and read back through a CPU Vulkan runtime
+        run: |
+          set -euo pipefail
+          ICD=$(find /usr/share/vulkan/icd.d -iname '*lvp*json' -type f | head -1); test -n "$ICD"
+          VK_ICD_FILENAMES="$ICD" VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation \
+            timeout 120 ./m2v/target/debug/ivm-metal-runtime-probe 2>&1 | tee runtime-smoke.log
+          ! grep -E 'Validation Error|VUID-' runtime-smoke.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: metal-runtime-smoke
+          path: runtime-smoke.log
+          if-no-files-found: warn
+          retention-days: 7
