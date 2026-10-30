@@ -1,0 +1,84 @@
+name: metal-shader-probe
+# Experimental AIR -> SPIR-V translation for a CPU Vulkan profile. No user photos.
+# Build public code before retrieving the private system shader; execute it offline.
+on:
+  workflow_dispatch:
+    inputs:
+      scan_run: { description: 'photos-metallib-scan run ID', default: '41013651124' }
+permissions: { contents: read, actions: read }
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 50
+    steps:
+      - name: Fetch pinned public translator source
+        run: |
+          set -euo pipefail
+          git clone --quiet --filter=blob:none --no-checkout --depth=1 https://github.com/steelbrain/metal2vulkan.git m2v
+          cd m2v
+          git sparse-checkout init --no-cone
+          printf '%s\n' '/Cargo.toml' '/rust-toolchain.toml' '/README.md' '/crates/metal2vulkan/Cargo.toml' '/crates/metal2vulkan/build.rs' '/crates/metal2vulkan/build_support.rs' '/crates/metal2vulkan/src/' '/crates/metal2vulkan-air/Cargo.toml' '/crates/metal2vulkan-air/src/' '/crates/metal2vulkan-devtools/Cargo.toml' '/crates/metal2vulkan-devtools/src/' '/crates/metal2vulkan-validation/profiles/gate-lavapipe.json' | git sparse-checkout set --no-cone --stdin
+          git checkout --detach 219f01365dc4c8eb346816c405b5b17403793764
+          python3 - <<'PY'
+          p='Cargo.toml'
+          s=open(p).read()
+          for member in ('metal2vulkan-conformance', 'metal2vulkan-runtime', 'metal2vulkan-validation'):
+              s=s.replace('    "crates/'+member+'",\n', '')
+          open(p,'w').write(s)
+          PY
+          git diff -- Cargo.toml
+      - name: Build translator (clang host compiler)
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          set -euo pipefail
+          cd m2v
+          rustup toolchain install 1.98.1 --profile minimal
+          cargo +1.98.1 build -p metal2vulkan --features cli
+          mkdir -p "$GITHUB_WORKSPACE/m2v-out"
+          cp target/debug/metal2vulkan "$GITHUB_WORKSPACE/m2v-out/metal2vulkan"
+          strip "$GITHUB_WORKSPACE/m2v-out/metal2vulkan"
+          cp crates/metal2vulkan-validation/profiles/gate-lavapipe.json "$GITHUB_WORKSPACE/m2v-out/profile.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: metal-translator
+          path: m2v-out/
+          retention-days: 3
+  probe:
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: metal-translator, path: /tmp/m2v }
+      - uses: actions/download-artifact@v4
+        with:
+          name: photos-metallib-scan-results
+          path: /tmp/shaders
+          run-id: '${{ inputs.scan_run }}'
+          github-token: '${{ github.token }}'
+      - name: Probe PXG shader translation against CPU Vulkan profile without network
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq >/dev/null 2>&1
+          sudo apt-get install -y -qq spirv-tools >/dev/null 2>&1
+          chmod +x /tmp/m2v/metal2vulkan
+          mkdir -p "$GITHUB_WORKSPACE/shader-results"
+          P="$GITHUB_WORKSPACE/shader-results"
+          IN=$(find /tmp/shaders -maxdepth 1 -name '*.metallib' -type f | head -1); test -n "$IN"
+          # Capture the return code, including a typed refusal: this probe is not a rendering test.
+          set +e
+          sudo unshare -n -- /tmp/m2v/metal2vulkan "$IN" "$P/pxg.spv" --profile /tmp/m2v/profile.json --function vertex_main --fragment fragment_main --color-format 0:BGRA8Unorm --emit-meta "$P/pxg.json" > "$P/probe.log" 2>&1
+          RC=$?
+          set -e
+          echo "translator_exit=$RC" | tee -a "$P/probe.log"
+          cat "$P/probe.log"
+          if [ "$RC" = 0 ]; then find "$P" -maxdepth 1 -name '*.spv' -exec spirv-val --target-env vulkan1.2 {} \;; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: photos-shader-probe-results
+          path: shader-results/
+          if-no-files-found: warn
+          retention-days: 7
