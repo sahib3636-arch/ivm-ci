@@ -5,8 +5,8 @@ on:
   workflow_dispatch:
     inputs:
       ivm_ref: { description: 'ivm repo ref', default: 'exp/device-stub-20261027' }
-      bases: { description: 'comma-separated image bases (unslid) to dump', default: '0x19cca2000' }
-      size_mb: { description: 'MB to dump per image', default: '16' }
+      bases: { description: 'comma-separated image bases (unslid) to dump', default: '0x19cca2000,0x1d4d54000,0x1cabac000,0x1d1c98000,0x1cacdd000,0x1ca30d000' }
+      size_mb: { description: 'MB to dump per image', default: '2' }
 permissions: { actions: read, contents: read }
 jobs:
   dump:
@@ -44,16 +44,26 @@ jobs:
           set -uxo pipefail
           R=$GITHUB_WORKSPACE; O=$R/dsc-out
           python3 - "$O" "${{ inputs.bases }}" "${{ inputs.size_mb }}" <<'PY'
-          import sys, os
+          import sys, os, struct, mmap
           O, bases, size_mb = sys.argv[1], sys.argv[2], int(sys.argv[3])
-          f = open("/tmp/dsc.bin", "rb")
+          f = open("/tmp/dsc.bin", "rb"); d = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
+          mo, mc, _io, _ic = struct.unpack("<IIII", d[0x10:0x20])
+          maps = [struct.unpack("<QQIIII", d[mo + i * 32: mo + i * 32 + 32]) for i in range(mc)]
+          def va2file(v):
+              for a, sz, fo, _m, _i, _f in maps:
+                  if a <= v < a + sz:
+                      return fo + (v - a), a + sz - v
+              return None, 0
           for b in bases.split(","):
               b = int(b.strip(), 16)
-              fo = b - 0x180000000
-              f.seek(fo); data = f.read(size_mb << 20)
+              fo, avail = va2file(b)
+              if fo is None:
+                  print("unmapped", hex(b)); continue
+              n = min(size_mb << 20, avail)
+              data = d[fo:fo + n]
               name = os.path.join(O, "img-PhotosUI-%x.bin" % b)
               open(name, "wb").write(data)
-              print("dumped", hex(b), len(data), "bytes ->", name)
+              print("dumped", hex(b), len(data), "bytes avail", avail, "->", name)
           PY
           ls -la $O
       - uses: actions/upload-artifact@v4
