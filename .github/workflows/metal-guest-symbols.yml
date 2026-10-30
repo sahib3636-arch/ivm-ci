@@ -44,7 +44,7 @@ jobs:
           python3 "$A" "$ROOT" 0x6000 0 get "/System/Library/Caches/com.apple.dyld/$(basename "$DSC")" /tmp/ivm-system-dsc.bin
           case "$SYMBOL_SCOPE" in
             allocation)
-              patterns=('^_malloc$' '^_calloc$' '^_free$' '^_malloc_size$' '^_class_getInstanceSize$' '^_class_createInstance$' '^_object_getClass$' '^_objc_retain$' '^_objc_release$' '^_objc_storeStrong$') ;;
+              patterns=('^_malloc$' '^_calloc$' '^_free$' '^_malloc_size$' '^_class_getInstanceSize$' '^_class_createInstance$' '^_object_getClass$' '^_objc_retain$' '^_objc_release$' '^_objc_storeStrong$' '^_object_getIndexedIvars$' '^_object_dispose$' '^_objc_destructInstance$' '^_objc_rootRetainCount$') ;;
             iosurface)
               patterns=('^_IOSurface.*$' '^_CF(Retain|Release)$') ;;
             *) echo "unsupported symbol scope" >&2; exit 2 ;;
