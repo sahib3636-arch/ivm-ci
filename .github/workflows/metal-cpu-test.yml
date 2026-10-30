@@ -26,3 +26,5 @@ jobs:
           /tmp/metal_bridge_test
           clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_memory.c -o /tmp/test_qemu_memory
           /tmp/test_qemu_memory
+          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_callstate.c -o /tmp/test_qemu_callstate
+          /tmp/test_qemu_callstate
