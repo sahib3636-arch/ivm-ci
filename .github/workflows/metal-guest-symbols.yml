@@ -47,6 +47,8 @@ jobs:
               patterns=('^_malloc$' '^_calloc$' '^_free$' '^_malloc_size$' '^_class_getInstanceSize$' '^_class_createInstance$' '^_object_getClass$' '^_objc_retain$' '^_objc_release$' '^_objc_storeStrong$' '^_object_getIndexedIvars$' '^_object_dispose$' '^_objc_destructInstance$' '^_objc_rootRetainCount$' '^_objc_autorelease$' '^_objc_autoreleaseReturnValue$' '^_objc_retainAutoreleasedReturnValue$') ;;
             metal_limits)
               patterns=('(?i)(limits|capabilit|_MTLDevice|_MTLCreateSystemDefaultDevice)') ;;
+            selector_lookup)
+              patterns=('^_sel_registerName$' '^_objc_msgSend$' '^_objc_getClass$') ;;
             associations)
               patterns=('^_objc_setAssociatedObject$' '^_objc_getAssociatedObject$' '^_objc_removeAssociatedObjects$') ;;
             allocator_free)
