@@ -53,8 +53,8 @@ jobs:
           test -s "$SO"
           "$TC/llvm-readelf" -h "$SO" | grep -E 'Class:.*ELF64|Machine:.*AArch64'
           "$TC/llvm-readelf" -d "$SO" | grep NEEDED
-          "$TC/llvm-nm" -D --defined-only "$SO" | grep -E ' ivm_(library_create|library_find|render_compile|render_plan_draw_json)$'
-          test "$("$TC/llvm-nm" -D --defined-only "$SO" | grep -Ec ' ivm_(library_create|library_find|render_compile|render_plan_draw_json)$')" = 4
+          "$TC/llvm-nm" -D --defined-only "$SO" | grep -E ' ivm_(library_create|library_find|function_type|function_constant_count|function_constant_at|function_specialize_i32|render_compile|render_compile_specialized|render_plan_draw_json)$'
+          test "$("$TC/llvm-nm" -D --defined-only "$SO" | grep -Ec ' ivm_(library_create|library_find|function_type|function_constant_count|function_constant_at|function_specialize_i32|render_compile|render_compile_specialized|render_plan_draw_json)$')" = 9
           mkdir -p "$GITHUB_WORKSPACE/android-runtime"
           cp "$SO" "$GITHUB_WORKSPACE/android-runtime/"
           "$TC/llvm-strip" --strip-debug "$GITHUB_WORKSPACE/android-runtime/libivm_metal_ffi.so"
