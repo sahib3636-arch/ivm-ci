@@ -65,3 +65,5 @@ jobs:
           /tmp/test_qemu_libraryprobe
           clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_texturelive.c -o /tmp/test_qemu_texturelive
           /tmp/test_qemu_texturelive
+          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_textureupload.c -o /tmp/test_qemu_textureupload
+          /tmp/test_qemu_textureupload
