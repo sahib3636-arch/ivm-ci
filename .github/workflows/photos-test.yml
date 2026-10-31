@@ -139,6 +139,13 @@ jobs:
             case " $IVM_PATCHES " in *" metal-bridge-link "*) ;; *) echo 'Metal diagnostics require the metal-bridge-link patch' >&2; exit 1;; esac
             [ "$IVM_THREAD" = single ] || { echo 'Metal diagnostics require single-TCG mode' >&2; exit 1; }
           fi
+          # Bridge flags alone do not install the guest factory/selector hooks.
+          # Avoid long, misleading runs with no Metal instrumentation enabled.
+          if [ "$IVM_METAL_GUEST_SURFACE_LIVE" = 1 ]; then
+            for hook in '1970505d0:34=' '180190960:35=' '19d1b1584:46=' '19d1b1584:47='; do
+              case ",$IVM_USET," in *",$hook"*) ;; *) echo "Missing required guest surface hook: $hook" >&2; exit 1;; esac
+            done
+          fi
           which bash zstd tar jq || echo "Missing commands!"
 
           sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build clang-18 pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev libzstd-dev libpng-dev libjpeg-dev nettle-dev libgmp-dev liblzfse-dev libtasn1-6-dev zlib1g-dev liblz4-dev cmake procps iproute2 python3-fsapfs
