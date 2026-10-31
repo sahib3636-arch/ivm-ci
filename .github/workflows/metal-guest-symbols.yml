@@ -59,7 +59,7 @@ jobs:
             memory_copy)
               # Read only the pinned system cache; a returned symbol is not proof
               # that a guest pointer or IOSurface mapping is safe to touch.
-              patterns=('^_memcpy$' '^_memmove$' '^_memset$' '^_class_getInstanceMethod$' '^_method_getImplementation$') ;;
+              patterns=('(?i)(memcpy|memmove|memset|bcopy)' '^_class_getInstanceMethod$' '^_method_getImplementation$') ;;
             iosurface)
               patterns=('^_IOSurface.*$' '^_CF(Retain|Release)$') ;;
             *) echo "unsupported symbol scope" >&2; exit 2 ;;
