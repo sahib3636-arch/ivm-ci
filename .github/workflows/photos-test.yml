@@ -128,7 +128,7 @@ jobs:
           if [ "$IVM_METAL_LIBRARY_PROBE" = 1 ] || [ "$IVM_METAL_LIMITS_DISCOVERY" = 1 ] || \
              [ "$IVM_METAL_LIVE_TEXTURE" = 1 ] || [ "$IVM_METAL_LIVE_BUFFER" = 1 ] || \
              [ "$IVM_METAL_LIVE_QUEUE" = 1 ] || [ "$IVM_METAL_LIVE_COMMAND" = 1 ] || \
-             [ "$IVM_METAL_RUNTIME_PROBE" = 1 ]; then
+             [ "$IVM_METAL_RUNTIME_PROBE" = 1 ] || [ "$IVM_METAL_RUNTIME_MIRROR" = 1 ]; then
             case " $IVM_PATCHES " in *" metal-bridge-link "*) ;; *) echo 'Metal diagnostics require the metal-bridge-link patch' >&2; exit 1;; esac
             [ "$IVM_THREAD" = single ] || { echo 'Metal diagnostics require single-TCG mode' >&2; exit 1; }
           fi
@@ -151,7 +151,7 @@ jobs:
           bash $R/ivm-repo/ivm/inferno/gh-release.sh get "${{ inputs.diskset }}" /opt/dl > $O/download.log 2>&1
           rm -f /home/user/.tokens/github.pat; trap - EXIT
           unset IVM_PAT GH_TOKEN GITHUB_TOKEN ACTIONS_RUNTIME_TOKEN ACTIONS_ID_TOKEN_REQUEST_TOKEN
-          if [ "$IVM_METAL_RUNTIME_PROBE" = 1 ]; then
+          if [ "$IVM_METAL_RUNTIME_PROBE" = 1 ] || [ "$IVM_METAL_RUNTIME_MIRROR" = 1 ]; then
             sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mesa-vulkan-drivers vulkan-validationlayers
             export VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -iname '*lvp*json' -type f | head -1)"
             test -n "$VK_ICD_FILENAMES"
