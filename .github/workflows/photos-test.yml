@@ -17,7 +17,7 @@ on:
       ffi_run: { description: 'Optional ARM FFI workflow run ID for network-isolated guest library parse diagnostic', default: '' }
       library_probe: { description: '1 = read default.metallib header in guest; system code only', default: '0' }
       limits_discovery: { description: '1 = diagnostic nil-limits instruction bypass, NOT a Metal implementation', default: '0' }
-      live_library: { description: '1 = parsed library; probe = inspect constants; special = live specialization; special-gated = delay Metal until Camera fixture; runtime-gated = probe, runtime-guest-gated = CI-only pipeline wrapper; runtime-surface-gated = also read-lock and transiently stage IOSurface; needs ffi_run and library_probe', default: '0' }
+      live_library: { description: '1 = parsed library; probe = inspect constants; special = live specialization; special-gated = delay Metal until Camera fixture; runtime-gated = probe, runtime-guest-gated = CI-only pipeline wrapper; runtime-surface-gated = transient read-lock staging; runtime-present-gated = experimental retained surface and writeback; needs ffi_run and library_probe', default: '0' }
       live_command: { description: '1 = experimental empty host command buffers, requires live_queue=1', default: '0' }
       live_queue: { description: '1 = experimental live host command queue, requires metal_single=1', default: '0' }
       live_texture: { description: '1 = limited guest-backed host texture experiment', default: '0' }
@@ -39,7 +39,7 @@ jobs:
         if: ${{ inputs.ffi_run != '' }}
         uses: actions/download-artifact@v4
         with:
-          name: "${{ (inputs.live_library == 'runtime-gated' || (inputs.live_library == 'runtime-guest-gated' || inputs.live_library == 'runtime-surface-gated')) && 'metal-runtime-ffi-linux-arm64' || 'metal-ffi-runtime-linux-arm64' }}"
+          name: "${{ (inputs.live_library == 'runtime-gated' || (inputs.live_library == 'runtime-guest-gated' || (inputs.live_library == 'runtime-surface-gated' || inputs.live_library == 'runtime-present-gated'))) && 'metal-runtime-ffi-linux-arm64' || 'metal-ffi-runtime-linux-arm64' }}"
           path: metal-ffi
           run-id: '${{ inputs.ffi_run }}'
           github-token: '${{ github.token }}'
@@ -96,20 +96,22 @@ jobs:
           IVM_UTRACE_BT: '1'
           IVM_THREAD: "${{ inputs.metal_single == '1' && 'single' || 'multi' }}"
           IVM_METAL_LIBRARY_PROBE: "${{ inputs.library_probe }}"
-          IVM_METAL_LIVE_LIBRARY: "${{ (inputs.live_library == 'probe' || inputs.live_library == 'special' || inputs.live_library == 'special-gated' || inputs.live_library == 'runtime-gated' || (inputs.live_library == 'runtime-guest-gated' || inputs.live_library == 'runtime-surface-gated')) && '1' || inputs.live_library }}"
+          IVM_METAL_LIVE_LIBRARY: "${{ (inputs.live_library == 'probe' || inputs.live_library == 'special' || inputs.live_library == 'special-gated' || inputs.live_library == 'runtime-gated' || (inputs.live_library == 'runtime-guest-gated' || (inputs.live_library == 'runtime-surface-gated' || inputs.live_library == 'runtime-present-gated'))) && '1' || inputs.live_library }}"
           IVM_METAL_CONSTANT_PROBE: "${{ inputs.live_library == 'probe' && '1' || '0' }}"
-          IVM_METAL_LIVE_SPECIALIZATION: "${{ (inputs.live_library == 'special' || inputs.live_library == 'special-gated' || inputs.live_library == 'runtime-gated' || (inputs.live_library == 'runtime-guest-gated' || inputs.live_library == 'runtime-surface-gated')) && '1' || '0' }}"
-          IVM_METAL_GATE_FILE: "${{ (inputs.live_library == 'special-gated' || inputs.live_library == 'runtime-gated' || (inputs.live_library == 'runtime-guest-gated' || inputs.live_library == 'runtime-surface-gated')) && '/tmp/ivm-metal-fixture-gate' || '' }}"
-          IVM_METAL_PIPELINE_PROBE: "${{ (inputs.live_library == 'special-gated' || inputs.live_library == 'runtime-gated' || (inputs.live_library == 'runtime-guest-gated' || inputs.live_library == 'runtime-surface-gated')) && '1' || '0' }}"
+          IVM_METAL_LIVE_SPECIALIZATION: "${{ (inputs.live_library == 'special' || inputs.live_library == 'special-gated' || inputs.live_library == 'runtime-gated' || (inputs.live_library == 'runtime-guest-gated' || (inputs.live_library == 'runtime-surface-gated' || inputs.live_library == 'runtime-present-gated'))) && '1' || '0' }}"
+          IVM_METAL_GATE_FILE: "${{ (inputs.live_library == 'special-gated' || inputs.live_library == 'runtime-gated' || (inputs.live_library == 'runtime-guest-gated' || (inputs.live_library == 'runtime-surface-gated' || inputs.live_library == 'runtime-present-gated'))) && '/tmp/ivm-metal-fixture-gate' || '' }}"
+          IVM_METAL_PIPELINE_PROBE: "${{ (inputs.live_library == 'special-gated' || inputs.live_library == 'runtime-gated' || (inputs.live_library == 'runtime-guest-gated' || (inputs.live_library == 'runtime-surface-gated' || inputs.live_library == 'runtime-present-gated'))) && '1' || '0' }}"
           # Guest mode already builds the full pipeline. Do not compile a
           # second partial-descriptor diagnostic pipeline on each call.
           IVM_METAL_RUNTIME_PROBE: "${{ inputs.live_library == 'runtime-gated' && '1' || '0' }}"
-          IVM_METAL_RUNTIME_MIRROR: "${{ (inputs.live_library == 'runtime-gated' || (inputs.live_library == 'runtime-guest-gated' || inputs.live_library == 'runtime-surface-gated')) && '1' || '0' }}"
+          IVM_METAL_RUNTIME_MIRROR: "${{ (inputs.live_library == 'runtime-gated' || (inputs.live_library == 'runtime-guest-gated' || (inputs.live_library == 'runtime-surface-gated' || inputs.live_library == 'runtime-present-gated'))) && '1' || '0' }}"
           # Guest wrapper is CI-only, with a restricted but still partially
           # verified descriptor and unresolved guest/process lifetimes.
-          IVM_METAL_RUNTIME_GUEST_PIPELINE: "${{ (inputs.live_library == 'runtime-guest-gated' || inputs.live_library == 'runtime-surface-gated') && '1' || '0' }}"
+          IVM_METAL_RUNTIME_GUEST_PIPELINE: "${{ (inputs.live_library == 'runtime-guest-gated' || (inputs.live_library == 'runtime-surface-gated' || inputs.live_library == 'runtime-present-gated')) && '1' || '0' }}"
           # Explicit opt-in: locked transient host staging, no presentation.
           IVM_METAL_SURFACE_LOCK_PROBE: "${{ inputs.live_library == 'runtime-surface-gated' && '1' || '0' }}"
+          # Live wrapping/writeback is opt-in and does not prove Photos success.
+          IVM_METAL_GUEST_SURFACE_LIVE: "${{ inputs.live_library == 'runtime-present-gated' && '1' || '0' }}"
           IVM_METAL_COMPILE_PROBE_PROFILE: "${{ inputs.live_library == 'special-gated' && format('{0}/metal-probe-profile.json', github.workspace) || '' }}"
           IVM_METAL_FFI_PROBE_PATH: "${{ inputs.ffi_run != '' && format('{0}/metal-ffi/libivm_metal_ffi.so', github.workspace) || '' }}"
           IVM_METAL_LIMITS_DISCOVERY: "${{ inputs.limits_discovery }}"
