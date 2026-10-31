@@ -263,6 +263,7 @@ jobs:
             ${{ github.workspace }}/bench-out/**/serial.log
             ${{ github.workspace }}/bench-out/**/dscwin.*
             ${{ github.workspace }}/bench-out/build.log
+            ${{ github.workspace }}/bench-out/vulkan-summary.log
             ${{ github.workspace }}/bench-out/photos-db-fix.txt
             ${{ github.workspace }}/bench-out/knowledge-base/**
             ${{ github.workspace }}/bench-out/**/dbcheck.txt
