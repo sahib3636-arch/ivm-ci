@@ -152,10 +152,16 @@ jobs:
           rm -f /home/user/.tokens/github.pat; trap - EXIT
           unset IVM_PAT GH_TOKEN GITHUB_TOKEN ACTIONS_RUNTIME_TOKEN ACTIONS_ID_TOKEN_REQUEST_TOKEN
           if [ "$IVM_METAL_RUNTIME_PROBE" = 1 ] || [ "$IVM_METAL_RUNTIME_MIRROR" = 1 ]; then
-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mesa-vulkan-drivers vulkan-validationlayers
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mesa-vulkan-drivers vulkan-validationlayers vulkan-tools
             export VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -iname '*lvp*json' -type f | head -1)"
             test -n "$VK_ICD_FILENAMES"
             export VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation
+            # Fail before the slow guest boot if a CPU Vulkan device is missing.
+            # A successful CI workflow alone never proves Photos rendering.
+            mkdir -p "$R/.vulkan-runtime"; chmod 700 "$R/.vulkan-runtime"
+            export XDG_RUNTIME_DIR="$R/.vulkan-runtime"
+            vulkaninfo --summary > "$O/vulkan-summary.log" 2>&1
+            grep -Eq 'deviceType[[:space:]]*=[[:space:]]*PHYSICAL_DEVICE_TYPE_CPU' "$O/vulkan-summary.log" || { echo 'No CPU Vulkan physical device' >&2; exit 1; }
           fi
           if [ -n "$IVM_METAL_COMPILE_PROBE_PROFILE" ]; then
             # Public pinned synthetic profile: compile-only diagnostics, NOT the actual device capabilities.
