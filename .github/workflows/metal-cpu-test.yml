@@ -77,6 +77,10 @@ jobs:
           /tmp/test_qemu_runtimeprobe
           clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. -I../metal_ffi test_qemu_runtimelive.c -ldl -o /tmp/test_qemu_runtimelive
           /tmp/test_qemu_runtimelive
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. -I../metal_ffi test_qemu_renderpassprobe.c -ldl -o /tmp/test_qemu_renderpassprobe
+          /tmp/test_qemu_renderpassprobe
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. -I../metal_ffi test_qemu_renderencoderlive.c -ldl -o /tmp/test_qemu_renderencoderlive
+          /tmp/test_qemu_renderencoderlive
           clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I../metal_ffi -I../metal_ffi_runtime ../metal_ffi_runtime/runtime_bridge.c ../metal_ffi_runtime/test_runtime_bridge.c -o /tmp/test_runtime_bridge
           /tmp/test_runtime_bridge
           clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I../metal_ffi test_qemu_specialization.c -o /tmp/test_qemu_specialization
