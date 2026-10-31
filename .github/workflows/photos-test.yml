@@ -101,7 +101,9 @@ jobs:
           IVM_METAL_LIVE_SPECIALIZATION: "${{ (inputs.live_library == 'special' || inputs.live_library == 'special-gated' || inputs.live_library == 'runtime-gated' || inputs.live_library == 'runtime-guest-gated') && '1' || '0' }}"
           IVM_METAL_GATE_FILE: "${{ (inputs.live_library == 'special-gated' || inputs.live_library == 'runtime-gated' || inputs.live_library == 'runtime-guest-gated') && '/tmp/ivm-metal-fixture-gate' || '' }}"
           IVM_METAL_PIPELINE_PROBE: "${{ (inputs.live_library == 'special-gated' || inputs.live_library == 'runtime-gated' || inputs.live_library == 'runtime-guest-gated') && '1' || '0' }}"
-          IVM_METAL_RUNTIME_PROBE: "${{ (inputs.live_library == 'runtime-gated' || inputs.live_library == 'runtime-guest-gated') && '1' || '0' }}"
+          # Guest mode already builds the full pipeline. Do not compile a
+          # second partial-descriptor diagnostic pipeline on each call.
+          IVM_METAL_RUNTIME_PROBE: "${{ inputs.live_library == 'runtime-gated' && '1' || '0' }}"
           IVM_METAL_RUNTIME_MIRROR: "${{ (inputs.live_library == 'runtime-gated' || inputs.live_library == 'runtime-guest-gated') && '1' || '0' }}"
           # Guest wrapper is CI-only, with a restricted but still partially
           # verified descriptor and unresolved guest/process lifetimes.
