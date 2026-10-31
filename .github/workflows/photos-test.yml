@@ -102,6 +102,7 @@ jobs:
           IVM_METAL_GATE_FILE: "${{ (inputs.live_library == 'special-gated' || inputs.live_library == 'runtime-gated') && '/tmp/ivm-metal-fixture-gate' || '' }}"
           IVM_METAL_PIPELINE_PROBE: "${{ (inputs.live_library == 'special-gated' || inputs.live_library == 'runtime-gated') && '1' || '0' }}"
           IVM_METAL_RUNTIME_PROBE: "${{ inputs.live_library == 'runtime-gated' && '1' || '0' }}"
+          IVM_METAL_RUNTIME_MIRROR: "${{ inputs.live_library == 'runtime-gated' && '1' || '0' }}"
           IVM_METAL_COMPILE_PROBE_PROFILE: "${{ inputs.live_library == 'special-gated' && format('{0}/metal-probe-profile.json', github.workspace) || '' }}"
           IVM_METAL_FFI_PROBE_PATH: "${{ inputs.ffi_run != '' && format('{0}/metal-ffi/libivm_metal_ffi.so', github.workspace) || '' }}"
           IVM_METAL_LIMITS_DISCOVERY: "${{ inputs.limits_discovery }}"

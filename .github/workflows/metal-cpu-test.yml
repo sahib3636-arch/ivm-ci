@@ -21,73 +21,73 @@ jobs:
         working-directory: ivm-repo/ivm/lab/metal_cpu
         run: |
           set -euxo pipefail
-          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g metal_cpu.c test_metal_cpu.c -o /tmp/metal_cpu_test
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g metal_cpu.c test_metal_cpu.c -o /tmp/metal_cpu_test
           /tmp/metal_cpu_test
-          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g metal_cpu.c metal_bridge.c test_bridge.c -o /tmp/metal_bridge_test
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g metal_cpu.c metal_bridge.c test_bridge.c -o /tmp/metal_bridge_test
           /tmp/metal_bridge_test
-          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_memory.c -o /tmp/test_qemu_memory
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_memory.c -o /tmp/test_qemu_memory
           /tmp/test_qemu_memory
-          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_callstate.c -o /tmp/test_qemu_callstate
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_callstate.c -o /tmp/test_qemu_callstate
           /tmp/test_qemu_callstate
           (cd ../../bench && python3 -m unittest -v test_photos_vision)
           (cd ../../lab/tools && python3 -m unittest -v test_metal_trace_report)
-          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_context_policy.c -o /tmp/test_context_policy
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_context_policy.c -o /tmp/test_context_policy
           /tmp/test_context_policy
-          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_allocprobe.c -o /tmp/test_qemu_allocprobe
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_allocprobe.c -o /tmp/test_qemu_allocprobe
           /tmp/test_qemu_allocprobe
-          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g metal_cpu.c metal_bridge.c test_qemu_bridge.c -o /tmp/test_qemu_bridge
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g metal_cpu.c metal_bridge.c test_qemu_bridge.c -o /tmp/test_qemu_bridge
           /tmp/test_qemu_bridge
           python3 -m unittest -v test_bridge_link
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_allocprobe.c -o /tmp/test_qemu_allocprobe_link
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_allocprobe.c -o /tmp/test_qemu_allocprobe_link
           /tmp/test_qemu_allocprobe_link
-          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_objectprobe.c -o /tmp/test_qemu_objectprobe_nolink
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_objectprobe.c -o /tmp/test_qemu_objectprobe_nolink
           /tmp/test_qemu_objectprobe_nolink
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_objectprobe.c -o /tmp/test_qemu_objectprobe_link
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_objectprobe.c -o /tmp/test_qemu_objectprobe_link
           /tmp/test_qemu_objectprobe_link
-          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_embeddedprobe.c -o /tmp/test_qemu_embeddedprobe_nolink
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_embeddedprobe.c -o /tmp/test_qemu_embeddedprobe_nolink
           /tmp/test_qemu_embeddedprobe_nolink
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_embeddedprobe.c -o /tmp/test_qemu_embeddedprobe_link
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_embeddedprobe.c -o /tmp/test_qemu_embeddedprobe_link
           /tmp/test_qemu_embeddedprobe_link
-          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_bufferprobe.c -o /tmp/test_qemu_bufferprobe_nolink
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_bufferprobe.c -o /tmp/test_qemu_bufferprobe_nolink
           /tmp/test_qemu_bufferprobe_nolink
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_bufferprobe.c -o /tmp/test_qemu_bufferprobe_link
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_bufferprobe.c -o /tmp/test_qemu_bufferprobe_link
           /tmp/test_qemu_bufferprobe_link
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_bufferlive.c -o /tmp/test_qemu_bufferlive
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_bufferlive.c -o /tmp/test_qemu_bufferlive
           /tmp/test_qemu_bufferlive
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_queuelive.c -o /tmp/test_qemu_queuelive
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_queuelive.c -o /tmp/test_qemu_queuelive
           /tmp/test_qemu_queuelive
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_commandlive.c -o /tmp/test_qemu_commandlive
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_commandlive.c -o /tmp/test_qemu_commandlive
           /tmp/test_qemu_commandlive
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g test_qemu_label.c -o /tmp/test_qemu_label
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g test_qemu_label.c -o /tmp/test_qemu_label
           /tmp/test_qemu_label
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g test_qemu_limitsdiscovery.c -o /tmp/test_qemu_limitsdiscovery
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g test_qemu_limitsdiscovery.c -o /tmp/test_qemu_limitsdiscovery
           /tmp/test_qemu_limitsdiscovery
-          clang -std=c11 -Wall -Wextra -Werror -fPIC -shared -I../metal_ffi test_ffi_plugin.c -o /tmp/ffi-mock.so
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I../metal_ffi -DIVML_NO_STATIC_BACKEND ../metal_ffi/library_bridge.c test_qemu_ffiprobe.c -ldl -o /tmp/test_qemu_ffiprobe
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -fPIC -shared -I../metal_ffi test_ffi_plugin.c -o /tmp/ffi-mock.so
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I../metal_ffi -DIVML_NO_STATIC_BACKEND ../metal_ffi/library_bridge.c test_qemu_ffiprobe.c -ldl -o /tmp/test_qemu_ffiprobe
           /tmp/test_qemu_ffiprobe /tmp/ffi-mock.so
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -DIVML_NO_STATIC_BACKEND -fsanitize=address,undefined -g -I../metal_ffi ../metal_ffi/library_bridge.c test_qemu_librarylive.c -ldl -o /tmp/test_qemu_librarylive
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -DIVML_NO_STATIC_BACKEND -fsanitize=address,undefined -g -I../metal_ffi ../metal_ffi/library_bridge.c test_qemu_librarylive.c -ldl -o /tmp/test_qemu_librarylive
           /tmp/test_qemu_librarylive /tmp/ffi-mock.so
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. -I../metal_ffi test_qemu_constantprobe.c -ldl -o /tmp/test_qemu_constantprobe
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. -I../metal_ffi test_qemu_constantprobe.c -ldl -o /tmp/test_qemu_constantprobe
           /tmp/test_qemu_constantprobe
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. -I../metal_ffi test_qemu_pipelineprobe.c -ldl -o /tmp/test_qemu_pipelineprobe
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. -I../metal_ffi test_qemu_pipelineprobe.c -ldl -o /tmp/test_qemu_pipelineprobe
           /tmp/test_qemu_pipelineprobe
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. -I../metal_ffi test_qemu_compileprobe.c -ldl -o /tmp/test_qemu_compileprobe
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. -I../metal_ffi test_qemu_compileprobe.c -ldl -o /tmp/test_qemu_compileprobe
           /tmp/test_qemu_compileprobe
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. -I../metal_ffi test_qemu_runtimeprobe.c -ldl -o /tmp/test_qemu_runtimeprobe
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. -I../metal_ffi test_qemu_runtimeprobe.c -ldl -o /tmp/test_qemu_runtimeprobe
           /tmp/test_qemu_runtimeprobe
-          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I../metal_ffi -I../metal_ffi_runtime ../metal_ffi_runtime/runtime_bridge.c ../metal_ffi_runtime/test_runtime_bridge.c -o /tmp/test_runtime_bridge
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g -I../metal_ffi -I../metal_ffi_runtime ../metal_ffi_runtime/runtime_bridge.c ../metal_ffi_runtime/test_runtime_bridge.c -o /tmp/test_runtime_bridge
           /tmp/test_runtime_bridge
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I../metal_ffi test_qemu_specialization.c -o /tmp/test_qemu_specialization
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I../metal_ffi test_qemu_specialization.c -o /tmp/test_qemu_specialization
           /tmp/test_qemu_specialization
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -DIVML_NO_STATIC_BACKEND -fsanitize=address,undefined -g -I../metal_ffi ../metal_ffi/library_bridge.c test_qemu_specializelive.c -ldl -o /tmp/test_qemu_specializelive
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -DIVML_NO_STATIC_BACKEND -fsanitize=address,undefined -g -I../metal_ffi ../metal_ffi/library_bridge.c test_qemu_specializelive.c -ldl -o /tmp/test_qemu_specializelive
           /tmp/test_qemu_specializelive
-          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_fixture_gate.c -o /tmp/test_fixture_gate
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_fixture_gate.c -o /tmp/test_fixture_gate
           /tmp/test_fixture_gate
-          clang -std=c11 -Wall -Wextra -Werror -DIVML_NO_STATIC_BACKEND -fsanitize=address,undefined -g ../metal_ffi/library_bridge.c ../metal_ffi/test_dynamic_bridge.c -o /tmp/test_dynamic_bridge
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVML_NO_STATIC_BACKEND -fsanitize=address,undefined -g ../metal_ffi/library_bridge.c ../metal_ffi/test_dynamic_bridge.c -o /tmp/test_dynamic_bridge
           /tmp/test_dynamic_bridge
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I../metal_ffi test_qemu_libraryprobe.c -ldl -o /tmp/test_qemu_libraryprobe
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I../metal_ffi test_qemu_libraryprobe.c -ldl -o /tmp/test_qemu_libraryprobe
           /tmp/test_qemu_libraryprobe
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. -I../metal_ffi metal_cpu.c metal_bridge.c test_qemu_texturelive.c -ldl -o /tmp/test_qemu_texturelive
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. -I../metal_ffi metal_cpu.c metal_bridge.c test_qemu_texturelive.c -ldl -o /tmp/test_qemu_texturelive
           /tmp/test_qemu_texturelive
-          clang -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_textureupload.c -o /tmp/test_qemu_textureupload
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_textureupload.c -o /tmp/test_qemu_textureupload
           /tmp/test_qemu_textureupload
