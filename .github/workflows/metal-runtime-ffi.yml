@@ -48,7 +48,7 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/runtime-plugin"
           cp target/debug/libivm_metal_ffi.so "$GITHUB_WORKSPACE/runtime-plugin/"
           strip --strip-debug "$GITHUB_WORKSPACE/runtime-plugin/libivm_metal_ffi.so"
-          clang -std=c11 -Wall -Wextra -Werror -Icrates/ivm_metal_ffi -I../ivm-repo/ivm/lab/metal_ffi_runtime ../ivm-repo/ivm/lab/metal_ffi_runtime/test_runtime_pipeline.c -L"$GITHUB_WORKSPACE/runtime-plugin" -livm_metal_ffi -Wl,-rpath,"$GITHUB_WORKSPACE/runtime-plugin" -o "$GITHUB_WORKSPACE/test_runtime_pipeline"
+          clang -std=c11 -Wall -Wextra -Werror -Icrates/ivm_metal_ffi -I../ivm-repo/ivm/lab/metal_ffi_runtime ../ivm-repo/ivm/lab/metal_ffi_runtime/test_runtime_pipeline.c ../ivm-repo/ivm/lab/metal_ffi_runtime/runtime_bridge.c -L"$GITHUB_WORKSPACE/runtime-plugin" -livm_metal_ffi -Wl,-rpath,"$GITHUB_WORKSPACE/runtime-plugin" -o "$GITHUB_WORKSPACE/test_runtime_pipeline"
       - uses: actions/upload-artifact@v4
         with:
           name: metal-runtime-ffi-linux-arm64
