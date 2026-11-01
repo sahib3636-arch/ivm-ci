@@ -157,7 +157,12 @@ jobs:
           # Inferno's meson.build hard-requires nettle >=3.10 (meson.build:1758) when --enable-nettle;
           # ubuntu-24.04-arm ships 3.9.1 (ios-boot-test only passes because trixie's container has 3.10.1).
           # Build 3.10.1 into /usr/local: same soname (libnettle.so.8), pkg-config prefers /usr/local.
-          curl -fsSL https://ftpmirror.gnu.org/nettle/nettle-3.10.1.tar.gz | tar -xz -C /tmp
+          # Retry incomplete mirror transfers before extracting, with an independent fallback.
+          if ! curl --fail --silent --show-error --location --retry 4 --retry-all-errors --connect-timeout 20 -o /tmp/nettle-3.10.1.tar.gz https://ftpmirror.gnu.org/nettle/nettle-3.10.1.tar.gz || ! tar -tzf /tmp/nettle-3.10.1.tar.gz >/dev/null; then
+            curl --fail --silent --show-error --location --retry 4 --retry-all-errors --connect-timeout 20 -o /tmp/nettle-3.10.1.tar.gz https://ftp.gnu.org/gnu/nettle/nettle-3.10.1.tar.gz
+            tar -tzf /tmp/nettle-3.10.1.tar.gz >/dev/null
+          fi
+          tar -xzf /tmp/nettle-3.10.1.tar.gz -C /tmp
           cd /tmp/nettle-3.10.1 && ./configure --prefix=/usr/local --disable-documentation >nettle-conf.log && make -j"$(nproc)" >nettle-make.log && sudo make install >/dev/null && sudo ldconfig && cd "$R"
           echo "nettle now: $(pkg-config --modversion nettle)"
           pipx install meson==1.7.0 || pip3 install --user meson==1.7.0
