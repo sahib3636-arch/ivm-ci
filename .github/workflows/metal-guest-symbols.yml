@@ -57,7 +57,7 @@ jobs:
               # Diagnostic only: locate methods/classes before considering a scoped CI fixture-timeout experiment.
               patterns=('(?i)(FBSProcessWatchdog|FBApplicationProcessWatchdogPolicy|watchdogPolicyForProcess)') ;;
             blocks)
-              patterns=('^_Block_copy$' '^_Block_release$' '^_objc_retainBlock$' '^_dispatch_block_create$') ;;
+              patterns=('(?i)(Block_get_function_pointer|block_copy|block_release|block_invoke|client_callout)' '^_objc_retainBlock$' '^_dispatch_block_create$') ;;
             memory_copy)
               # Read only the pinned system cache; a returned symbol is not proof
               # that a guest pointer or IOSurface mapping is safe to touch.
