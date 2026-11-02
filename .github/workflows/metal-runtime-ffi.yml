@@ -49,6 +49,7 @@ jobs:
           cp target/debug/libivm_metal_ffi.so "$GITHUB_WORKSPACE/runtime-plugin/"
           strip --strip-debug "$GITHUB_WORKSPACE/runtime-plugin/libivm_metal_ffi.so"
           clang -std=c11 -Wall -Wextra -Werror -Icrates/ivm_metal_ffi -I../ivm-repo/ivm/lab/metal_ffi_runtime ../ivm-repo/ivm/lab/metal_ffi_runtime/test_runtime_pipeline.c ../ivm-repo/ivm/lab/metal_ffi_runtime/runtime_bridge.c -L"$GITHUB_WORKSPACE/runtime-plugin" -livm_metal_ffi -Wl,-rpath,"$GITHUB_WORKSPACE/runtime-plugin" -o "$GITHUB_WORKSPACE/test_runtime_pipeline"
+          clang -std=c11 -Wall -Wextra -Werror -Icrates/ivm_metal_ffi -I../ivm-repo/ivm/lab/metal_ffi_runtime ../ivm-repo/ivm/lab/metal_ffi_runtime/test_device_selection.c -L"$GITHUB_WORKSPACE/runtime-plugin" -livm_metal_ffi -Wl,-rpath,"$GITHUB_WORKSPACE/runtime-plugin" -o "$GITHUB_WORKSPACE/test_device_selection"
       - uses: actions/upload-artifact@v4
         with:
           name: metal-runtime-ffi-linux-arm64
@@ -65,6 +66,8 @@ jobs:
           set -euo pipefail
           IN=$(find "$GITHUB_WORKSPACE/system-shaders" -maxdepth 1 -name '*.metallib' -type f | head -1); test -n "$IN"
           ICD=$(find /usr/share/vulkan/icd.d -iname '*lvp*json' -type f | head -1); test -n "$ICD"
+          sudo unshare -n -- env VK_ICD_FILENAMES="$ICD" VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation timeout 180 "$GITHUB_WORKSPACE/test_device_selection" --cpu-only 2>&1 | tee device-selection.log
+          ! grep -E 'Validation Error|VUID-' device-selection.log
           sudo unshare -n -- env VK_ICD_FILENAMES="$ICD" VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation \
             timeout 180 "$GITHUB_WORKSPACE/test_runtime_pipeline" "$IN" 2>&1 | tee runtime-pipeline.log
           ! grep -E 'Validation Error|VUID-' runtime-pipeline.log
