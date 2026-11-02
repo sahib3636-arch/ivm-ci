@@ -80,7 +80,7 @@ jobs:
             adb shell chmod 755 /data/local/tmp/ivm-metal/vulkan_inventory
             adb shell /data/local/tmp/ivm-metal/vulkan_inventory 2>&1 | tee "$GITHUB_WORKSPACE/emulator-inventory.log"
             adb shell chmod 755 /data/local/tmp/ivm-metal/test_device_selection
-            adb shell 'cd /data/local/tmp/ivm-metal && LD_LIBRARY_PATH=. ./test_device_selection --cpu-only' 2>&1 | tee "$GITHUB_WORKSPACE/emulator-vulkan.log"
+            adb shell 'cd /data/local/tmp/ivm-metal && LD_LIBRARY_PATH=. XDG_CACHE_HOME=/data/local/tmp/ivm-metal ./test_device_selection --cpu-only' 2>&1 | tee "$GITHUB_WORKSPACE/emulator-vulkan.log"
             grep -q 'CPU ICD selected; hardware fallback correctly refused; clear/readback passed' "$GITHUB_WORKSPACE/emulator-vulkan.log"
       - uses: actions/upload-artifact@v4
         if: always()
