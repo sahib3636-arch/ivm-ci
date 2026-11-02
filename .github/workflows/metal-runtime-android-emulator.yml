@@ -1,0 +1,88 @@
+name: metal-runtime-android-emulator
+# x86_64 emulator software path only; no phone/Adreno claim.
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'ivm full SHA', required: true }
+permissions: { contents: read }
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: sahib3636-arch/ivm
+          token: '${{ secrets.IVM_PAT }}'
+          ref: '${{ inputs.ivm_ref }}'
+          path: ivm-repo
+          persist-credentials: false
+          lfs: false
+      - name: Fetch pinned public translator
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet --filter=blob:none --no-checkout --depth=1 https://github.com/steelbrain/metal2vulkan.git m2v
+          cd m2v
+          git fetch --quiet --depth=1 origin 219f01365dc4c8eb346816c405b5b17403793764
+          git sparse-checkout init --no-cone
+          printf '%s\n' '/Cargo.toml' '/rust-toolchain.toml' '/README.md' '/crates/metal2vulkan/Cargo.toml' '/crates/metal2vulkan/build.rs' '/crates/metal2vulkan/build_support.rs' '/crates/metal2vulkan/src/' '/crates/metal2vulkan-air/Cargo.toml' '/crates/metal2vulkan-air/src/' '/crates/metal2vulkan-devtools/Cargo.toml' '/crates/metal2vulkan-devtools/src/' '/crates/metal2vulkan-runtime/Cargo.toml' '/crates/metal2vulkan-runtime/src/' | git sparse-checkout set --no-cone --stdin
+          git checkout --detach 219f01365dc4c8eb346816c405b5b17403793764
+          cp -a ../ivm-repo/ivm/lab/metal_ffi crates/ivm_metal_ffi
+          cp ../ivm-repo/ivm/lab/metal_ffi_runtime/runtime_ext.rs crates/ivm_metal_ffi/src/runtime_ext.rs
+          printf '\nmod runtime_ext;\n' >> crates/ivm_metal_ffi/src/lib.rs
+          printf '\nmetal2vulkan-runtime = { path = "../metal2vulkan-runtime" }\n' >> crates/ivm_metal_ffi/Cargo.toml
+          python3 - <<'PY'
+          p='Cargo.toml';s=open(p).read()
+          for m in ('metal2vulkan-conformance','metal2vulkan-validation'):
+              s=s.replace('    "crates/'+m+'",\n','')
+          s=s.replace('members = [', 'members = [\n    "crates/ivm_metal_ffi",',1)
+          open(p,'w').write(s)
+          PY
+      - name: Cross-build Android x86_64 with NDK clang
+        shell: bash
+        run: |
+          set -euo pipefail
+          NDK=${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME:-}}
+          TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup target add --toolchain 1.98.1 x86_64-linux-android
+          export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$TC/x86_64-linux-android34-clang"
+          export CC_x86_64_linux_android="$TC/x86_64-linux-android34-clang"
+          cd m2v
+          cargo +1.98.1 build -p ivm-metal-ffi --target x86_64-linux-android
+          mkdir -p "$GITHUB_WORKSPACE/emulator-runtime"
+          cp target/x86_64-linux-android/debug/libivm_metal_ffi.so "$GITHUB_WORKSPACE/emulator-runtime/"
+          "$TC/x86_64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror \
+            -Icrates/ivm_metal_ffi -I../ivm-repo/ivm/lab/metal_ffi_runtime \
+            ../ivm-repo/ivm/lab/metal_ffi_runtime/test_device_selection.c \
+            -L"$GITHUB_WORKSPACE/emulator-runtime" -livm_metal_ffi -o "$GITHUB_WORKSPACE/emulator-runtime/test_device_selection"
+      - name: Allow KVM for emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Android emulator software Vulkan smoke
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -eu
+            adb shell getprop ro.build.fingerprint | tee "$GITHUB_WORKSPACE/emulator-fingerprint.txt"
+            adb shell mkdir -p /data/local/tmp/ivm-metal
+            adb push "$GITHUB_WORKSPACE/emulator-runtime/libivm_metal_ffi.so" /data/local/tmp/ivm-metal/
+            adb push "$GITHUB_WORKSPACE/emulator-runtime/test_device_selection" /data/local/tmp/ivm-metal/
+            adb shell chmod 755 /data/local/tmp/ivm-metal/test_device_selection
+            adb shell 'cd /data/local/tmp/ivm-metal && LD_LIBRARY_PATH=. ./test_device_selection --cpu-only' 2>&1 | tee "$GITHUB_WORKSPACE/emulator-vulkan.log"
+            grep -q 'CPU ICD selected; hardware fallback correctly refused; clear/readback passed' "$GITHUB_WORKSPACE/emulator-vulkan.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: metal-runtime-android-emulator-results
+          path: |
+            emulator-fingerprint.txt
+            emulator-vulkan.log
+          if-no-files-found: warn
+          retention-days: 7
