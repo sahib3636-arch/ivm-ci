@@ -123,3 +123,5 @@ jobs:
           /tmp/test_qemu_completiondeliver
           clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_retry.c -o /tmp/test_qemu_retry
           /tmp/test_qemu_retry
+          clang -I. -I../metal_ffi -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -Wno-misleading-indentation -fsanitize=address,undefined -g test_qemu_texturestage.c -o /tmp/test_qemu_texturestage
+          /tmp/test_qemu_texturestage
