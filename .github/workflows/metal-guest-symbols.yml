@@ -60,6 +60,8 @@ jobs:
               patterns=('(?i)(Block_get_function_pointer|block_copy|block_release|block_invoke|client_callout)' '^_objc_retainBlock$' '^_dispatch_block_create$') ;;
             block_dispatch)
               patterns=('(?i)(ffi_call|dispatch.*callout|block.*invoke|invoke.*block|invokeWith.*target|perform.*block)') ;;
+            coreimage_helpers)
+              patterns=('^_abort$') ;;
             coreimage_code)
               patterns=('^_abort$') ;;
             coreimage_class)
@@ -83,6 +85,9 @@ jobs:
             *) echo "unsupported symbol scope" >&2; exit 2 ;;
           esac
           python3 "$R/ivm-repo/ivm/lab/tools/dsc-find.py" /tmp/ivm-system-dsc.bin "${patterns[@]}" > "$O/find.txt"
+          if [ "$SYMBOL_SCOPE" = coreimage_helpers ]; then
+            python3 "$R/ivm-repo/ivm/lab/tools/dsc-code-window.py" /tmp/ivm-system-dsc.bin 0x181d3f5b8:0x300 0x181d435c4:0x300 0x181d9ab30:0x300 > "$O/find.txt"
+          fi
           if [ "$SYMBOL_SCOPE" = coreimage_code ]; then
             python3 "$R/ivm-repo/ivm/lab/tools/dsc-code-window.py" /tmp/ivm-system-dsc.bin 0x181d0a100:0x400 0x181d0d698:0x1a0 0x181d0cf20:0x400 > "$O/find.txt"
           fi
