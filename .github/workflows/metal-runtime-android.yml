@@ -72,6 +72,8 @@ jobs:
             ../ivm-repo/ivm/lab/metal_ffi_runtime/runtime_bridge.c \
             -L"$GITHUB_WORKSPACE/android-runtime" -livm_metal_ffi -o "$GITHUB_WORKSPACE/android-runtime/test_runtime_pipeline"
           "$TC/llvm-readelf" -h "$GITHUB_WORKSPACE/android-runtime/test_runtime_pipeline" | grep -E 'Class:.*ELF64|Machine:.*AArch64' 
+          "$TC/aarch64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror \
+            ../ivm-repo/ivm/lab/metal_ffi_runtime/vulkan_inventory.c -lvulkan -o "$GITHUB_WORKSPACE/android-runtime/vulkan_inventory"
       - uses: actions/upload-artifact@v4
         with:
           name: metal-runtime-android-arm64-crossbuild-only

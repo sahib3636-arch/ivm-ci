@@ -57,6 +57,8 @@ jobs:
             -Icrates/ivm_metal_ffi -I../ivm-repo/ivm/lab/metal_ffi_runtime \
             ../ivm-repo/ivm/lab/metal_ffi_runtime/test_device_selection.c \
             -L"$GITHUB_WORKSPACE/emulator-runtime" -livm_metal_ffi -o "$GITHUB_WORKSPACE/emulator-runtime/test_device_selection"
+          "$TC/x86_64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror \
+            ../ivm-repo/ivm/lab/metal_ffi_runtime/vulkan_inventory.c -lvulkan -o "$GITHUB_WORKSPACE/emulator-runtime/vulkan_inventory"
       - name: Allow KVM for emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -74,6 +76,9 @@ jobs:
             adb shell mkdir -p /data/local/tmp/ivm-metal
             adb push "$GITHUB_WORKSPACE/emulator-runtime/libivm_metal_ffi.so" /data/local/tmp/ivm-metal/
             adb push "$GITHUB_WORKSPACE/emulator-runtime/test_device_selection" /data/local/tmp/ivm-metal/
+            adb push "$GITHUB_WORKSPACE/emulator-runtime/vulkan_inventory" /data/local/tmp/ivm-metal/
+            adb shell chmod 755 /data/local/tmp/ivm-metal/vulkan_inventory
+            adb shell /data/local/tmp/ivm-metal/vulkan_inventory 2>&1 | tee "$GITHUB_WORKSPACE/emulator-inventory.log"
             adb shell chmod 755 /data/local/tmp/ivm-metal/test_device_selection
             adb shell 'cd /data/local/tmp/ivm-metal && LD_LIBRARY_PATH=. ./test_device_selection --cpu-only' 2>&1 | tee "$GITHUB_WORKSPACE/emulator-vulkan.log"
             grep -q 'CPU ICD selected; hardware fallback correctly refused; clear/readback passed' "$GITHUB_WORKSPACE/emulator-vulkan.log"
@@ -84,5 +89,6 @@ jobs:
           path: |
             emulator-fingerprint.txt
             emulator-vulkan.log
+            emulator-inventory.log
           if-no-files-found: warn
           retention-days: 7
