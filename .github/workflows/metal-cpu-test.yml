@@ -117,3 +117,5 @@ jobs:
           /tmp/test_qemu_iosurfacelive
           clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I../metal_ffi test_qemu_surfacepresent.c -o /tmp/test_qemu_surfacepresent
           /tmp/test_qemu_surfacepresent
+          clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I../metal_ffi test_qemu_completionregister.c -o /tmp/test_qemu_completionregister
+          /tmp/test_qemu_completionregister
