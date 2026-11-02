@@ -29,7 +29,7 @@ jobs:
           R="$GITHUB_WORKSPACE"; O="$R/guest-symbols"; mkdir -p "$O" /opt/dl /opt/vm
           sudo apt-get update -qq >/dev/null 2>&1
           sudo apt-get install -y -qq zstd >/dev/null 2>&1
-          pip3 install -q --break-system-packages libfsapfs-python
+          pip3 install -q --break-system-packages libfsapfs-python capstone
           sudo install -d -m 700 -o "$(id -u)" -g "$(id -g)" /home/user/.tokens
           umask 077; printf %s "$IVM_PAT" > /home/user/.tokens/github.pat
           trap 'rm -f /home/user/.tokens/github.pat /tmp/ivm-system-dsc.bin' EXIT
@@ -60,6 +60,8 @@ jobs:
               patterns=('(?i)(Block_get_function_pointer|block_copy|block_release|block_invoke|client_callout)' '^_objc_retainBlock$' '^_dispatch_block_create$') ;;
             block_dispatch)
               patterns=('(?i)(ffi_call|dispatch.*callout|block.*invoke|invoke.*block|invokeWith.*target|perform.*block)') ;;
+            editor_code)
+              patterns=('^_abort$') ;;
             editor_abort_range)
               patterns=('.') ;;
             fatal_signals)
@@ -75,6 +77,9 @@ jobs:
             *) echo "unsupported symbol scope" >&2; exit 2 ;;
           esac
           python3 "$R/ivm-repo/ivm/lab/tools/dsc-find.py" /tmp/ivm-system-dsc.bin "${patterns[@]}" > "$O/find.txt"
+          if [ "$SYMBOL_SCOPE" = editor_code ]; then
+            python3 "$R/ivm-repo/ivm/lab/tools/dsc-code-window.py" /tmp/ivm-system-dsc.bin 0x1b71ada00:0x700 0x1b7260700:0x600 0x1b725ed08:0x400 > "$O/find.txt"
+          fi
           if [ "$SYMBOL_SCOPE" = editor_abort_range ]; then
             grep -E '^0x1b7[0123]' "$O/find.txt" > "$O/range.txt" || true
             mv "$O/range.txt" "$O/find.txt"
