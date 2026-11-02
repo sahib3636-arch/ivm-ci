@@ -88,7 +88,8 @@ jobs:
           CC_OVERRIDE: '${{ inputs.cc }}'
           IVM_MESON: "${{ inputs.meson == '1' && '1' || '' }}"
           IVM_NRN_SAFE: '1'
-          CAM_EDITCAM: '1'
+          # Skip unverified Camera-viewer Edit taps in the gated grid fixture.
+          CAM_EDITCAM: "${{ inputs.live_library == 'runtime-present-gated' && '' || '1' }}"
           CAM_EDITOR: '1'
           # Candidate-only OCR guard: screenshots remain unverified; no save is attempted.
           CAM_EDITOR_EXPLORE: "${{ inputs.live_library == 'runtime-present-gated' && '1' || '' }}"
