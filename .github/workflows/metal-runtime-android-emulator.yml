@@ -59,6 +59,18 @@ jobs:
             -L"$GITHUB_WORKSPACE/emulator-runtime" -livm_metal_ffi -o "$GITHUB_WORKSPACE/emulator-runtime/test_device_selection"
           "$TC/x86_64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror \
             ../ivm-repo/ivm/lab/metal_ffi_runtime/vulkan_inventory.c -lvulkan -o "$GITHUB_WORKSPACE/emulator-runtime/vulkan_inventory"
+          "$TC/x86_64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror \
+            -Icrates/ivm_metal_ffi -I../ivm-repo/ivm/lab/metal_ffi_runtime \
+            ../ivm-repo/ivm/lab/metal_ffi_runtime/test_runtime_pipeline.c \
+            ../ivm-repo/ivm/lab/metal_ffi_runtime/runtime_bridge.c \
+            -L"$GITHUB_WORKSPACE/emulator-runtime" -livm_metal_ffi -o "$GITHUB_WORKSPACE/emulator-runtime/test_runtime_pipeline"
+      - name: Download system-shader scan for private CI use
+        uses: actions/download-artifact@v4
+        with:
+          name: photos-metallib-scan-results
+          path: system-shaders
+          run-id: '41013651124'
+          github-token: '${{ github.token }}'
       - name: Allow KVM for emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -79,9 +91,15 @@ jobs:
             adb push "$GITHUB_WORKSPACE/emulator-runtime/vulkan_inventory" /data/local/tmp/ivm-metal/
             adb shell chmod 755 /data/local/tmp/ivm-metal/vulkan_inventory
             adb shell /data/local/tmp/ivm-metal/vulkan_inventory 2>&1 | tee "$GITHUB_WORKSPACE/emulator-inventory.log"
+            adb push "$GITHUB_WORKSPACE/emulator-runtime/test_runtime_pipeline" /data/local/tmp/ivm-metal/
+            adb shell chmod 755 /data/local/tmp/ivm-metal/test_runtime_pipeline
+            adb push "$(find "$GITHUB_WORKSPACE/system-shaders" -maxdepth 1 -name '*.metallib' -type f | head -1)" /data/local/tmp/ivm-metal/shader.metallib
             adb shell chmod 755 /data/local/tmp/ivm-metal/test_device_selection
             adb shell 'cd /data/local/tmp/ivm-metal && LD_LIBRARY_PATH=. XDG_CACHE_HOME=/data/local/tmp/ivm-metal ./test_device_selection --cpu-only' 2>&1 | tee "$GITHUB_WORKSPACE/emulator-vulkan.log"
             grep -q 'CPU ICD selected; hardware fallback correctly refused; clear/readback passed' "$GITHUB_WORKSPACE/emulator-vulkan.log"
+            adb shell 'cd /data/local/tmp/ivm-metal && LD_LIBRARY_PATH=. XDG_CACHE_HOME=/data/local/tmp/ivm-metal ./test_runtime_pipeline shader.metallib' 2>&1 | tee "$GITHUB_WORKSPACE/emulator-shader.log"
+            grep -q 'runtime shader draw pixels passed' "$GITHUB_WORKSPACE/emulator-shader.log"
+            grep -q 'PASS: CPU Vulkan Metal-shaped pipeline with synthetic inputs' "$GITHUB_WORKSPACE/emulator-shader.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -90,5 +108,6 @@ jobs:
             emulator-fingerprint.txt
             emulator-vulkan.log
             emulator-inventory.log
+            emulator-shader.log
           if-no-files-found: warn
           retention-days: 7
