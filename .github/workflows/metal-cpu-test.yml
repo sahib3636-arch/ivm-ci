@@ -38,6 +38,7 @@ jobs:
           clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g metal_cpu.c metal_bridge.c test_qemu_bridge.c -o /tmp/test_qemu_bridge
           /tmp/test_qemu_bridge
           python3 -m unittest -v test_bridge_link
+          python3 -m unittest -v test_compare_pixels
           clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -DIVM_QEMU_METAL_BRIDGE=1 -fsanitize=address,undefined -g -I. metal_cpu.c metal_bridge.c test_qemu_allocprobe.c -o /tmp/test_qemu_allocprobe_link
           /tmp/test_qemu_allocprobe_link
           clang -I../metal_ffi_runtime -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g test_qemu_objectprobe.c -o /tmp/test_qemu_objectprobe_nolink
