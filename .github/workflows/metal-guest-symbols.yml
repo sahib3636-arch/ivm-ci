@@ -60,6 +60,8 @@ jobs:
               patterns=('(?i)(Block_get_function_pointer|block_copy|block_release|block_invoke|client_callout)' '^_objc_retainBlock$' '^_dispatch_block_create$') ;;
             block_dispatch)
               patterns=('(?i)(ffi_call|dispatch.*callout|block.*invoke|invoke.*block|invokeWith.*target|perform.*block)') ;;
+            fatal_signals)
+              patterns=('^_abort$' '^___assert_rtn$' '^_raise$' '^_pthread_kill$' '^_objc_exception_throw$' '^_objc_terminate$' '^__os_crash$' '^___stack_chk_fail$') ;;
             guest_wait)
               patterns=('^_usleep$' '^_nanosleep$' '^_sched_yield$') ;;
             memory_copy)
