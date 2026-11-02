@@ -60,6 +60,8 @@ jobs:
               patterns=('(?i)(Block_get_function_pointer|block_copy|block_release|block_invoke|client_callout)' '^_objc_retainBlock$' '^_dispatch_block_create$') ;;
             block_dispatch)
               patterns=('(?i)(ffi_call|dispatch.*callout|block.*invoke|invoke.*block|invokeWith.*target|perform.*block)') ;;
+            editor_abort_range)
+              patterns=('.') ;;
             fatal_signals)
               patterns=('^_abort$' '^___assert_rtn$' '^_raise$' '^_pthread_kill$' '^_objc_exception_throw$' '^_objc_terminate$' '^__os_crash$' '^___stack_chk_fail$') ;;
             guest_wait)
@@ -73,6 +75,10 @@ jobs:
             *) echo "unsupported symbol scope" >&2; exit 2 ;;
           esac
           python3 "$R/ivm-repo/ivm/lab/tools/dsc-find.py" /tmp/ivm-system-dsc.bin "${patterns[@]}" > "$O/find.txt"
+          if [ "$SYMBOL_SCOPE" = editor_abort_range ]; then
+            grep -E '^0x1b7[0123]' "$O/find.txt" > "$O/range.txt" || true
+            mv "$O/range.txt" "$O/find.txt"
+          fi
           if [ "$SYMBOL_SCOPE" = metal_limits ]; then
             grep -E '/(Metal|IOGPU|AGXMetal)' "$O/find.txt" > "$O/metal.txt" || true
             mv "$O/metal.txt" "$O/find.txt"
