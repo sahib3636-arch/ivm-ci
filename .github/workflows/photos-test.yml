@@ -65,6 +65,8 @@ jobs:
           CAM_IPS: '1'      # s46: bench commits the guest overlay into the root image before quit (ips-commit)
           CAM_PHOTOS: '1'
           CAM_SHOT: "${{ inputs.cam_shot }}"
+          # Experimental fresh-disk fixture: compare still capture with Live Photo disabled.
+          CAM_LIVEOFF_LATE: "${{ inputs.live_library == 'runtime-present-gated' && inputs.cam_shot == '1' && '1' || '' }}"
           PHOTOS_VIA: "${{ inputs.photos_via }}"
           PHOTOS_LAUNCH: "${{ inputs.photos_launch }}"
           CAM_BINADDRS: "${{ inputs.binaddrs }}"
