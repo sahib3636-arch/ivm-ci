@@ -1,0 +1,27 @@
+name: app-compile-test
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'iVM full commit SHA', required: true }
+permissions: { contents: read }
+jobs:
+  kotlin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: sahib3636-arch/ivm
+          token: '${{ secrets.IVM_PAT }}'
+          ref: '${{ inputs.ivm_ref }}'
+          path: ivm-repo
+          persist-credentials: false
+          lfs: false
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.14.3' }
+      - name: Compile app and run JVM launch-plan tests
+        working-directory: ivm-repo/ivm/lab/m6/apk/ivm-app
+        env: { CC: clang, CXX: clang++ }
+        run: gradle --no-daemon -Dorg.gradle.jvmargs=-Xmx3g :app:testDebugUnitTest --tests 'dev.ivm.emu.InfernoPlanTest' --tests 'dev.ivm.emu.BootPlanTest'
