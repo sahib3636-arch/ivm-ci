@@ -60,6 +60,8 @@ jobs:
               patterns=('(?i)(Block_get_function_pointer|block_copy|block_release|block_invoke|client_callout)' '^_objc_retainBlock$' '^_dispatch_block_create$') ;;
             block_dispatch)
               patterns=('(?i)(ffi_call|dispatch.*callout|block.*invoke|invoke.*block|invokeWith.*target|perform.*block)') ;;
+            guest_wait)
+              patterns=('^_usleep$' '^_nanosleep$' '^_sched_yield$') ;;
             memory_copy)
               # Read only the pinned system cache; a returned symbol is not proof
               # that a guest pointer or IOSurface mapping is safe to touch.
