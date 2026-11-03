@@ -69,7 +69,9 @@ jobs:
             grep -q 'PASS: Vulkan clear visible via AHardwareBuffer CPU lock' "$GITHUB_WORKSPACE/ahb-vulkan.log"
             grep -q 'PASS: CPU-written AHardwareBuffer pattern visible via Vulkan readback' "$GITHUB_WORKSPACE/ahb-vulkan.log"
             adb install "$GITHUB_WORKSPACE/ivm-repo/ivm/lab/android_vulkan/harness/app/build/outputs/apk/debug/app-debug.apk"
+            adb logcat -c
             adb shell am instrument -w -r dev.ivm.ahbtest/.Probe 2>&1 | tee "$GITHUB_WORKSPACE/ahb-sandbox.log"
+            adb logcat -d -v brief > "$GITHUB_WORKSPACE/ahb-sandbox-logcat.txt"
             grep -q 'IVM_AHB_SANDBOX_RESULT=0' "$GITHUB_WORKSPACE/ahb-sandbox.log"
             grep -q 'INSTRUMENTATION_CODE: -1' "$GITHUB_WORKSPACE/ahb-sandbox.log"
       - uses: actions/upload-artifact@v4
@@ -79,5 +81,6 @@ jobs:
           path: |
             ahb-vulkan.log
             ahb-sandbox.log
+            ahb-sandbox-logcat.txt
           if-no-files-found: warn
           retention-days: 7
