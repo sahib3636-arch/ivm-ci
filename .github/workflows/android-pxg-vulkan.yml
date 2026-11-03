@@ -29,7 +29,9 @@ jobs:
           set -euo pipefail
           TC="${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME}}/toolchains/llvm/prebuilt/linux-x86_64/bin"
           D=ivm-repo/ivm/lab/metal_cpu
-          "$TC/x86_64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror -O2 "$D/pxg_vulkan_smoke.c" "$D/metal_cpu.c" -lvulkan -o pxg_smoke
+          git clone -q --depth 1 --branch v1.4.321 https://github.com/KhronosGroup/Vulkan-Headers.git vulkan-headers
+          test "$(git -C vulkan-headers rev-parse HEAD)" = 4c8aa84a61c12cab9780fa44298617666b491d71
+          "$TC/x86_64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror -O2 -I vulkan-headers/include "$D/pxg_vulkan_smoke.c" "$D/metal_cpu.c" -lvulkan -o pxg_smoke
       - name: Allow KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
