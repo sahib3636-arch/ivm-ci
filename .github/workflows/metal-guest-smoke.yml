@@ -65,7 +65,7 @@ jobs:
           APP_TEST: '1'
           APP_N: '1'
           APP_ROUNDS: '1'
-          IVM_METAL_HOME_GATE: '1'
+          IVM_METAL_HOME_GATE: "${{ inputs.live_library != '0' && '1' || '0' }}"
           CAM_IPS: ''      # s46: bench commits the guest overlay into the root image before quit (ips-commit)
           CAM_PHOTOS: ''
           CAM_SHOT: "${{ inputs.cam_shot }}"
