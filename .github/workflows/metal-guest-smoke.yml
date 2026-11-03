@@ -248,6 +248,11 @@ jobs:
           B="$GITHUB_WORKSPACE/bench-out/bench.log"
           if [ -f "$R" ] && [ -f "$S" ] && [ -f "$B" ]; then
             python3 "$R" "$S" --bench "$B" | tee "$GITHUB_WORKSPACE/bench-out/metal-trace-report.json"
+            python3 - "$GITHUB_WORKSPACE/bench-out/metal-trace-report.json" <<'PYRESULT'
+          import json,sys
+          r=json.load(open(sys.argv[1]))
+          print('GUEST_METAL_COVERAGE=' + ('HOOK_OBSERVED_NOT_RENDER_PROOF' if r.get('hcall_completed',0)>0 else 'NOT_REACHED'))
+          PYRESULT
           else
             echo 'Metal text report unavailable for this run/ref.'
           fi
