@@ -90,7 +90,7 @@ jobs:
           esac
           python3 "$R/ivm-repo/ivm/lab/tools/dsc-find.py" /tmp/ivm-system-dsc.bin "${patterns[@]}" > "$O/find.txt"
           if [ "$SYMBOL_SCOPE" = spawn ]; then
-            python3 "$R/ivm-repo/ivm/lab/tools/dsc-code-window.py" /tmp/ivm-system-dsc.bin 0x180255b48:0x100 >> "$O/find.txt"
+            python3 "$R/ivm-repo/ivm/lab/tools/dsc-code-window.py" /tmp/ivm-system-dsc.bin 0x180255b48:0x280 >> "$O/find.txt"
           fi
           if [ "$SYMBOL_SCOPE" = camera_factory_callers ]; then
             python3 "$R/ivm-repo/ivm/lab/tools/dsc-resolve.py" /tmp/ivm-system-dsc.bin 0x1a81eb1c8 0x1882493c4 0x185cd2a1c 0x1c27852a4 > "$O/find.txt"
