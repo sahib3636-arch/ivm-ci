@@ -59,6 +59,19 @@ jobs:
           sudo mount -t apfs -o vol=0,readwrite "$LOOP" /mnt/ivm-guest-marker
           sudo python3 "$R/ivm-repo/ivm/lab/guest_probe/prepare.py" system /mnt/ivm-guest-marker | tee -a "$O/prepare.log"
           sync; sudo umount /mnt/ivm-guest-marker
+          sudo mount -t apfs -o vol=0,ro "$LOOP" /mnt/ivm-guest-marker
+          sudo python3 - <<'PYVERIFY'
+          import plistlib
+          with open('/mnt/ivm-guest-marker/System/Library/xpc/launchd.plist','rb') as f:d=plistlib.load(f)
+          key='/System/Library/LaunchDaemons/com.ivm.guest-probe.plist'
+          print('Persisted guest launchd entry:',key in d['LaunchDaemons'])
+          assert key in d['LaunchDaemons']
+          PYVERIFY
+          sudo umount /mnt/ivm-guest-marker
+          sudo mount -t apfs -o vol=1,ro "$LOOP" /mnt/ivm-guest-marker
+          sudo cmp "$R/guest-marker/ivm-guest-probe" /mnt/ivm-guest-marker/mobile/Library/ivm-guest-probe
+          sudo ls -l /mnt/ivm-guest-marker/mobile/Library/ivm-guest-probe
+          sudo umount /mnt/ivm-guest-marker
           sudo losetup -d "$LOOP"; trap - EXIT
           python3 - "$VMD/trustcache" <<'PYTRUST'
           import struct,sys
