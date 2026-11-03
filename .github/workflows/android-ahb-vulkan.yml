@@ -42,11 +42,11 @@ jobs:
           TC="${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME}}/toolchains/llvm/prebuilt/linux-x86_64/bin"
           ROOT=ivm-repo/ivm/lab/android_vulkan
           mkdir -p "$ROOT/harness/app/src/main/jniLibs/x86_64" "$ROOT/harness/app/src/main/jniLibs/arm64-v8a"
-          curl -fsSL --retry 3 -o validation.zip https://github.com/KhronosGroup/Vulkan-ValidationLayers/releases/download/vulkan-sdk-1.4.321.0/android-binaries-1.4.321.0.zip
-          echo '75f2881ba7af0507c8cec13b4bf6c95556c6333485cdb8be41f608fccf762128  validation.zip' | sha256sum -c -
+          curl -fsSL --retry 3 -o validation.zip https://github.com/KhronosGroup/Vulkan-ValidationLayers/releases/download/vulkan-sdk-1.4.363.0/android-binaries-1.4.363.0.zip
+          echo '9a3b8e32cb3330406dd4f3651594201635baee4528da8e2a5300e4f55e1a9cc7  validation.zip' | sha256sum -c -
           unzip -q validation.zip
-          cp android-binaries-1.4.321.0/x86_64/libVkLayer_khronos_validation.so "$ROOT/harness/app/src/main/jniLibs/x86_64/"
-          cp android-binaries-1.4.321.0/arm64-v8a/libVkLayer_khronos_validation.so "$ROOT/harness/app/src/main/jniLibs/arm64-v8a/"
+          cp android-binaries-1.4.363.0/x86_64/libVkLayer_khronos_validation.so "$ROOT/harness/app/src/main/jniLibs/x86_64/"
+          cp android-binaries-1.4.363.0/arm64-v8a/libVkLayer_khronos_validation.so "$ROOT/harness/app/src/main/jniLibs/arm64-v8a/"
           "$TC/x86_64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror -shared -fPIC -DIVM_AHB_VALIDATION=1 -Dmain=ivm_ahb_smoke_main "$ROOT/ahb_vulkan_clear.c" "$ROOT/harness/jni.c" -lvulkan -landroid -llog -o "$ROOT/harness/app/src/main/jniLibs/x86_64/libivm_ahb_probe.so"
           "$TC/aarch64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror -shared -fPIC -DIVM_AHB_VALIDATION=1 -Dmain=ivm_ahb_smoke_main "$ROOT/ahb_vulkan_clear.c" "$ROOT/harness/jni.c" -lvulkan -landroid -llog -o "$ROOT/harness/app/src/main/jniLibs/arm64-v8a/libivm_ahb_probe.so"
           cd "$ROOT/harness"
