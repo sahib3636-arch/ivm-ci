@@ -43,6 +43,8 @@ jobs:
           test -n "$DSC"
           python3 "$A" "$ROOT" 0x6000 0 get "/System/Library/Caches/com.apple.dyld/$(basename "$DSC")" /tmp/ivm-system-dsc.bin
           case "$SYMBOL_SCOPE" in
+            spawn)
+              patterns=('^_posix_spawn$' '^_posix_spawnp$' '^_execve$' '^_execve_with_mac_syscall$') ;;
             allocation)
               patterns=('^_malloc$' '^_calloc$' '^_free$' '^_malloc_size$' '^_class_getInstanceSize$' '^_class_createInstance$' '^_object_getClass$' '^_objc_retain$' '^_objc_release$' '^_objc_storeStrong$' '^_object_getIndexedIvars$' '^_object_dispose$' '^_objc_destructInstance$' '^_objc_rootRetainCount$' '^_objc_autorelease$' '^_objc_autoreleaseReturnValue$' '^_objc_retainAutoreleasedReturnValue$') ;;
             metal_limits)
