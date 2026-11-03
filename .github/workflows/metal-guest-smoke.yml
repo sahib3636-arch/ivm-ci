@@ -12,7 +12,7 @@ on:
       cam_shot: { description: '1 = take 2 shots before Photos (library non-empty); 0 = empty library', default: '1' }
       ktrace: { description: '1 = kernel data-abort trap; 2 = also BRK trap; 3 = kill trace (brk+triage+psignal+memorystatus+exit1, PCs from this kernelcache)', default: '0' }
       photos_via: { description: "'' = Photos icon/Spotlight; viewer = open Photos from the Camera thumbnail", default: '' }
-      photos_launch: { description: 'Guest smoke app: settings or maps', default: 'settings' }
+      photos_launch: { description: 'Guest smoke app: settings, maps or camera (no capture)', default: 'settings' }
       metal_single: { description: '1 = single TCG thread for opt-in experimental live buffer test', default: '1' }
       ffi_run: { description: 'Optional ARM FFI workflow run ID for network-isolated guest library parse diagnostic', default: '' }
       library_probe: { description: '1 = read default.metallib header in guest; system code only', default: '0' }
