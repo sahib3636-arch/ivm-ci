@@ -251,7 +251,7 @@ jobs:
             python3 - "$GITHUB_WORKSPACE/bench-out/metal-trace-report.json" <<'PYRESULT'
           import json,sys
           r=json.load(open(sys.argv[1]))
-          print('GUEST_METAL_COVERAGE=' + ('HOOK_OBSERVED_NOT_RENDER_PROOF' if r.get('hcall_completed',0)>0 else 'NOT_REACHED'))
+          print('GUEST_METAL_COVERAGE=' + ('HCALL_COMPLETED_NOT_RENDER_PROOF' if r.get('hcall_completed',0)>0 else 'FACTORY_ENTRY_ONLY' if r.get('factory_entry_count',0)>0 else 'NOT_REACHED'))
           PYRESULT
           else
             echo 'Metal text report unavailable for this run/ref.'
