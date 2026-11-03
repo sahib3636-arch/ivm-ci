@@ -1,0 +1,64 @@
+name: guest-disk-inspect
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'Full iVM commit', required: true }
+permissions: { contents: read }
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false, persist-credentials: false }
+      - name: Inspect private test disk launch mechanism
+        shell: bash
+        env: { IVM_PAT: '${{ secrets.IVM_PAT }}', CC: clang }
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang git curl zstd linux-headers-$(uname -r) build-essential python3
+          mkdir -p /opt/dl /opt/vm "$GITHUB_WORKSPACE/inspect-out"
+          sudo install -d -m 700 -o "$(id -u)" -g "$(id -g)" /home/user/.tokens
+          umask 077; printf %s "$IVM_PAT" > /home/user/.tokens/github.pat
+          trap 'rm -f /home/user/.tokens/github.pat' EXIT
+          bash ivm-repo/ivm/inferno/gh-release.sh get diskset-setupdone-18A5351d /opt/dl > "$GITHUB_WORKSPACE/inspect-out/download.log" 2>&1
+          rm -f /home/user/.tokens/github.pat; trap - EXIT
+          unset IVM_PAT GH_TOKEN GITHUB_TOKEN ACTIONS_RUNTIME_TOKEN ACTIONS_ID_TOKEN_REQUEST_TOKEN
+          zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS
+          ROOT=$(find /opt/vm -maxdepth 3 -type f -name root | head -1); test -n "$ROOT"
+          git clone -q --depth 1 -b v0.3.21 https://github.com/linux-apfs/linux-apfs-rw /tmp/apfsrw
+          make -C /tmp/apfsrw -j2 KDIR=/lib/modules/$(uname -r)/build > "$GITHUB_WORKSPACE/inspect-out/apfs-build.log" 2>&1
+          sudo insmod /tmp/apfsrw/apfs.ko
+          LOOP=$(sudo losetup -f --show -o 24576 "$ROOT")
+          cleanup() { sudo umount /mnt/ivm-inspect 2>/dev/null || true; sudo losetup -d "$LOOP" || true; }
+          trap cleanup EXIT
+          sudo mkdir -p /mnt/ivm-inspect
+          for volume in 0 1; do
+            if sudo mount -t apfs -o "vol=$volume,ro" "$LOOP" /mnt/ivm-inspect; then
+              {
+                echo "=== volume $volume ==="
+                for path in /System/Library/xpc/launchd.plist /System/Library/LaunchDaemons /private/var /var /mobile/Library; do
+                  sudo ls -ld "/mnt/ivm-inspect$path" 2>&1 || true
+                done
+                sudo python3 - <<'PY'
+          import os,plistlib
+          path='/mnt/ivm-inspect/System/Library/xpc/launchd.plist'
+          try:
+              with open(path,'rb') as f:d=plistlib.load(f)
+              print('launchd plist root:', type(d).__name__)
+              if isinstance(d,dict):
+                  print('top-level keys:', sorted(map(str,d.keys())))
+                  for key in ('LaunchDaemons','LaunchAgents'):
+                      if isinstance(d.get(key),dict):print(key,'entries:',len(d[key]))
+          except Exception as e:print('launchd cache read:',type(e).__name__,str(e))
+          PY
+              } >> "$GITHUB_WORKSPACE/inspect-out/layout.txt"
+              sudo umount /mnt/ivm-inspect
+            else
+              echo "volume $volume mount failed" >> "$GITHUB_WORKSPACE/inspect-out/layout.txt"
+            fi
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: guest-disk-layout, path: inspect-out/, if-no-files-found: warn, retention-days: 3 }
