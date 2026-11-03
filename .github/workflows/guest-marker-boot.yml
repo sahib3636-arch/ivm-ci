@@ -57,15 +57,16 @@ jobs:
           sudo python3 "$R/ivm-repo/ivm/lab/guest_probe/prepare.py" data /mnt/ivm-guest-marker "$R/guest-marker/ivm-guest-probe" | tee "$O/prepare.log"
           sync; sudo umount /mnt/ivm-guest-marker
           sudo mount -t apfs -o vol=0,readwrite "$LOOP" /mnt/ivm-guest-marker
-          sudo python3 "$R/ivm-repo/ivm/lab/guest_probe/prepare.py" system /mnt/ivm-guest-marker | tee -a "$O/prepare.log"
+          sudo python3 "$R/ivm-repo/ivm/lab/guest_probe/prepare.py" system-replace-test-slot /mnt/ivm-guest-marker | tee -a "$O/prepare.log"
           sync; sudo umount /mnt/ivm-guest-marker
           sudo mount -t apfs -o vol=0,ro "$LOOP" /mnt/ivm-guest-marker
           sudo python3 - <<'PYVERIFY'
           import plistlib
           with open('/mnt/ivm-guest-marker/System/Library/xpc/launchd.plist','rb') as f:d=plistlib.load(f)
-          key='/System/Library/LaunchDaemons/com.ivm.guest-probe.plist'
-          print('Persisted guest launchd entry:',key in d['LaunchDaemons'])
-          assert key in d['LaunchDaemons']
+          key='/System/Library/LaunchDaemons/com.apple.DumpPanic.plist'
+          job=d['LaunchDaemons'][key]
+          print('Persisted disposable launchd replacement:',job.get('Program'))
+          assert job.get('Program')=='/private/var/mobile/Library/ivm-guest-probe' 
           PYVERIFY
           sudo umount /mnt/ivm-guest-marker
           sudo mount -t apfs -o vol=1,ro "$LOOP" /mnt/ivm-guest-marker
