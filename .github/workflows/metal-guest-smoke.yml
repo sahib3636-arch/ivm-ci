@@ -63,6 +63,7 @@ jobs:
           # CAM_SHOT populates the library so the grid has content; CAM_EDITCAM tests the editor.
           CAM_TEST: ''
           APP_TEST: '1'
+          IVM_GUEST_SMOKE_UI: '1'
           APP_N: '1'
           APP_ROUNDS: '1'
           IVM_METAL_HOME_GATE: "${{ inputs.live_library != '0' && '1' || '0' }}"
