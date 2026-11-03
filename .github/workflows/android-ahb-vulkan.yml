@@ -1,0 +1,56 @@
+name: android-ahb-vulkan
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'iVM full commit SHA', required: true }
+permissions: { contents: read }
+jobs:
+  ahb:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: sahib3636-arch/ivm
+          token: '${{ secrets.IVM_PAT }}'
+          ref: '${{ inputs.ivm_ref }}'
+          path: ivm-repo
+          persist-credentials: false
+          lfs: false
+      - name: Build Android AHardwareBuffer interop probe with clang
+        shell: bash
+        run: |
+          set -euo pipefail
+          TC="${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME}}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          SRC=ivm-repo/ivm/lab/android_vulkan/ahb_vulkan_clear.c
+          mkdir -p binaries
+          "$TC/x86_64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror "$SRC" -lvulkan -landroid -o binaries/ahb-vulkan-x86_64
+          "$TC/aarch64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror "$SRC" -lvulkan -landroid -o binaries/ahb-vulkan-arm64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-ahb-vulkan-binaries
+          path: binaries/
+          retention-days: 3
+      - name: Allow KVM for emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Run interop smoke on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb push "$GITHUB_WORKSPACE/binaries/ahb-vulkan-x86_64" /data/local/tmp/ivm-ahb-vulkan
+            adb shell chmod 755 /data/local/tmp/ivm-ahb-vulkan
+            adb shell /data/local/tmp/ivm-ahb-vulkan 2>&1 | tee "$GITHUB_WORKSPACE/ahb-vulkan.log"
+            grep -q 'PASS: Vulkan clear visible via AHardwareBuffer CPU lock' "$GITHUB_WORKSPACE/ahb-vulkan.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-ahb-vulkan-log
+          path: ahb-vulkan.log
+          if-no-files-found: warn
+          retention-days: 7
