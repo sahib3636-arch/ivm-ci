@@ -60,6 +60,11 @@ jobs:
           sudo python3 "$R/ivm-repo/ivm/lab/guest_probe/prepare.py" system /mnt/ivm-guest-marker | tee -a "$O/prepare.log"
           sync; sudo umount /mnt/ivm-guest-marker
           sudo losetup -d "$LOOP"; trap - EXIT
+          python3 - "$VMD/trustcache" <<'PYTRUST'
+          import struct,sys
+          d=open(sys.argv[1],'rb').read()
+          print('trustcache size',len(d),'prefix',d[:32].hex(),'count@20',struct.unpack_from('<I',d,20)[0] if len(d)>=24 else None)
+          PYTRUST
           python3 "$R/ivm-repo/ivm/lab/guest_probe/prepare.py" trust "$R/guest-marker/ivm-guest-probe" "$VMD/trustcache" | tee -a "$O/prepare.log"
           if ! bash "$R/ivm-repo/ivm/bench/build-x86.sh" 6541861f4d033a0de327b5ccc5180ebac20bf461 /opt/b/eng > "$O/build.log" 2>&1; then tail -80 "$O/build.log"; exit 1; fi
           QD=$(ls -d /opt/b/keymaps-* | head -1); mkdir -p /opt/qd; cp -r "$QD" /opt/qd/keymaps
