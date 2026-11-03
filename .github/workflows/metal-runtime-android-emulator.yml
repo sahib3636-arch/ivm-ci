@@ -136,7 +136,7 @@ jobs:
             adb shell settings delete global enable_gpu_debug_layers
             adb shell settings delete global gpu_debug_app
             adb shell settings delete global gpu_debug_layers
-            grep -i 'VK_LAYER_KHRONOS_validation' "$GITHUB_WORKSPACE/emulator-dynamic-logcat.txt"
+            grep -q 'Loaded layer VK_LAYER_KHRONOS_validation' "$GITHUB_WORKSPACE/emulator-dynamic-logcat.txt"
             ! grep -E 'Validation Error|VUID-' "$GITHUB_WORKSPACE/emulator-dynamic-logcat.txt"
             grep -q 'IVM_DYNAMIC_SANDBOX_RESULT=0' "$GITHUB_WORKSPACE/emulator-dynamic-sandbox.log"
             grep -q 'IVM_SHADER_SANDBOX_RESULT=0' "$GITHUB_WORKSPACE/emulator-dynamic-sandbox.log"
