@@ -1,0 +1,58 @@
+name: android-pxg-vulkan
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'iVM full commit SHA', required: true }
+      shader_run: { description: 'translated shader sweep run', default: '41014290466' }
+permissions: { contents: read, actions: read }
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: sahib3636-arch/ivm
+          token: '${{ secrets.IVM_PAT }}'
+          ref: '${{ inputs.ivm_ref }}'
+          path: ivm-repo
+          persist-credentials: false
+          lfs: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: photos-shader-sweep-results
+          path: shaders
+          run-id: '${{ inputs.shader_run }}'
+          github-token: '${{ github.token }}'
+      - name: Build Android synthetic Vulkan sprite test with clang
+        run: |
+          set -euo pipefail
+          TC="${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME}}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          D=ivm-repo/ivm/lab/metal_cpu
+          "$TC/x86_64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror -O2 "$D/pxg_vulkan_smoke.c" "$D/metal_cpu.c" -lvulkan -o pxg_smoke
+      - name: Allow KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Test Android emulator shader variants
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb shell mkdir -p /data/local/tmp/pxg
+            adb push "$GITHUB_WORKSPACE/pxg_smoke" /data/local/tmp/pxg/
+            adb push "$GITHUB_WORKSPACE/shaders/" /data/local/tmp/pxg/
+            adb shell chmod 755 /data/local/tmp/pxg/pxg_smoke
+            adb shell 'cd /data/local/tmp/pxg && ./pxg_smoke shaders/pxg-0.vert.spv shaders/pxg-0.frag.spv 0 full' 2>&1 | tee "$GITHUB_WORKSPACE/pxg-android.log"
+            grep -q 'PASS: all sampled pixels' "$GITHUB_WORKSPACE/pxg-android.log"
+            grep -q 'PASS: mock guest surface export with padded rows' "$GITHUB_WORKSPACE/pxg-android.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-pxg-vulkan-log
+          path: pxg-android.log
+          if-no-files-found: warn
+          retention-days: 7
