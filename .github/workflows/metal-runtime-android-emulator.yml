@@ -80,6 +80,10 @@ jobs:
           TC="${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME}}/toolchains/llvm/prebuilt/linux-x86_64/bin"
           ROOT=ivm-repo/ivm/lab/metal_cpu/android_harness
           mkdir -p "$ROOT/app/src/main/jniLibs/x86_64"
+          curl -fsSL --retry 3 -o validation.zip https://github.com/KhronosGroup/Vulkan-ValidationLayers/releases/download/vulkan-sdk-1.4.363.0/android-binaries-1.4.363.0.zip
+          echo '9a3b8e32cb3330406dd4f3651594201635baee4528da8e2a5300e4f55e1a9cc7  validation.zip' | sha256sum -c -
+          unzip -q validation.zip
+          cp android-binaries-1.4.363.0/x86_64/libVkLayer_khronos_validation.so "$ROOT/app/src/main/jniLibs/x86_64/"
           cp emulator-runtime/libivm_metal_ffi.so "$ROOT/app/src/main/jniLibs/x86_64/"
           "$TC/llvm-strip" --strip-debug "$ROOT/app/src/main/jniLibs/x86_64/libivm_metal_ffi.so"
           C="$TC/x86_64-linux-android34-clang"
@@ -123,7 +127,17 @@ jobs:
             adb push "$(find "$GITHUB_WORKSPACE/system-shaders" -maxdepth 1 -name '*.metallib' -type f | head -1)" /data/local/tmp/ivm-ci-shader.metallib
             adb shell "run-as dev.ivm.dynamicprobe sh -c 'mkdir -p files; cat /data/local/tmp/ivm-ci-shader.metallib > files/shader.metallib'"
             adb shell rm /data/local/tmp/ivm-ci-shader.metallib
+            adb shell settings put global enable_gpu_debug_layers 1
+            adb shell settings put global gpu_debug_app dev.ivm.dynamicprobe
+            adb shell settings put global gpu_debug_layers VK_LAYER_KHRONOS_validation
+            adb logcat -c
             adb shell am instrument -r -w dev.ivm.dynamicprobe/.Probe 2>&1 | tee "$GITHUB_WORKSPACE/emulator-dynamic-sandbox.log"
+            adb logcat -d -v brief > "$GITHUB_WORKSPACE/emulator-dynamic-logcat.txt"
+            adb shell settings delete global enable_gpu_debug_layers
+            adb shell settings delete global gpu_debug_app
+            adb shell settings delete global gpu_debug_layers
+            grep -i 'VK_LAYER_KHRONOS_validation' "$GITHUB_WORKSPACE/emulator-dynamic-logcat.txt"
+            ! grep -E 'Validation Error|VUID-' "$GITHUB_WORKSPACE/emulator-dynamic-logcat.txt"
             grep -q 'IVM_DYNAMIC_SANDBOX_RESULT=0' "$GITHUB_WORKSPACE/emulator-dynamic-sandbox.log"
             grep -q 'IVM_SHADER_SANDBOX_RESULT=0' "$GITHUB_WORKSPACE/emulator-dynamic-sandbox.log"
             grep -q 'INSTRUMENTATION_CODE: -1' "$GITHUB_WORKSPACE/emulator-dynamic-sandbox.log"
@@ -150,5 +164,6 @@ jobs:
             emulator-shader.log
             emulator-dynamic-surface.log
             emulator-dynamic-sandbox.log
+            emulator-dynamic-logcat.txt
           if-no-files-found: warn
           retention-days: 7
