@@ -24,8 +24,8 @@ jobs:
           TC="${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME}}/toolchains/llvm/prebuilt/linux-x86_64/bin"
           SRC=ivm-repo/ivm/lab/android_vulkan/ahb_vulkan_clear.c
           mkdir -p binaries
-          "$TC/x86_64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror "$SRC" -lvulkan -landroid -o binaries/ahb-vulkan-x86_64
-          "$TC/aarch64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror "$SRC" -lvulkan -landroid -o binaries/ahb-vulkan-arm64
+          "$TC/x86_64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror "$SRC" -lvulkan -landroid -llog -o binaries/ahb-vulkan-x86_64
+          "$TC/aarch64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror "$SRC" -lvulkan -landroid -llog -o binaries/ahb-vulkan-arm64
       - uses: actions/upload-artifact@v4
         with:
           name: android-ahb-vulkan-binaries
@@ -47,8 +47,8 @@ jobs:
           unzip -q validation.zip
           cp android-binaries-1.4.321.0/x86_64/libVkLayer_khronos_validation.so "$ROOT/harness/app/src/main/jniLibs/x86_64/"
           cp android-binaries-1.4.321.0/arm64-v8a/libVkLayer_khronos_validation.so "$ROOT/harness/app/src/main/jniLibs/arm64-v8a/"
-          "$TC/x86_64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror -shared -fPIC -DIVM_AHB_VALIDATION=1 -Dmain=ivm_ahb_smoke_main "$ROOT/ahb_vulkan_clear.c" "$ROOT/harness/jni.c" -lvulkan -landroid -o "$ROOT/harness/app/src/main/jniLibs/x86_64/libivm_ahb_probe.so"
-          "$TC/aarch64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror -shared -fPIC -DIVM_AHB_VALIDATION=1 -Dmain=ivm_ahb_smoke_main "$ROOT/ahb_vulkan_clear.c" "$ROOT/harness/jni.c" -lvulkan -landroid -o "$ROOT/harness/app/src/main/jniLibs/arm64-v8a/libivm_ahb_probe.so"
+          "$TC/x86_64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror -shared -fPIC -DIVM_AHB_VALIDATION=1 -Dmain=ivm_ahb_smoke_main "$ROOT/ahb_vulkan_clear.c" "$ROOT/harness/jni.c" -lvulkan -landroid -llog -o "$ROOT/harness/app/src/main/jniLibs/x86_64/libivm_ahb_probe.so"
+          "$TC/aarch64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror -shared -fPIC -DIVM_AHB_VALIDATION=1 -Dmain=ivm_ahb_smoke_main "$ROOT/ahb_vulkan_clear.c" "$ROOT/harness/jni.c" -lvulkan -landroid -llog -o "$ROOT/harness/app/src/main/jniLibs/arm64-v8a/libivm_ahb_probe.so"
           cd "$ROOT/harness"
           gradle --no-daemon -Dorg.gradle.jvmargs=-Xmx2g :app:assembleDebug
       - name: Allow KVM for emulator
