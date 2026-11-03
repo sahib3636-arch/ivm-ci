@@ -12,7 +12,7 @@ on:
       cam_shot: { description: '1 = take 2 shots before Photos (library non-empty); 0 = empty library', default: '1' }
       ktrace: { description: '1 = kernel data-abort trap; 2 = also BRK trap; 3 = kill trace (brk+triage+psignal+memorystatus+exit1, PCs from this kernelcache)', default: '0' }
       photos_via: { description: "'' = Photos icon/Spotlight; viewer = open Photos from the Camera thumbnail", default: '' }
-      photos_launch: { description: "'' = Photos home-icon tap (E13 config, reproduces the crash); spotlight = Spotlight search", default: '' }
+      photos_launch: { description: 'Guest smoke app: settings or maps', default: 'settings' }
       metal_single: { description: '1 = single TCG thread for opt-in experimental live buffer test', default: '1' }
       ffi_run: { description: 'Optional ARM FFI workflow run ID for network-isolated guest library parse diagnostic', default: '' }
       library_probe: { description: '1 = read default.metallib header in guest; system code only', default: '0' }
@@ -64,6 +64,7 @@ jobs:
           CAM_TEST: ''
           APP_TEST: '1'
           IVM_GUEST_SMOKE_UI: '1'
+          IVM_GUEST_SMOKE_APP: '${{ inputs.photos_launch }}'
           APP_N: '1'
           APP_ROUNDS: '1'
           IVM_METAL_HOME_GATE: "${{ inputs.live_library != '0' && '1' || '0' }}"
