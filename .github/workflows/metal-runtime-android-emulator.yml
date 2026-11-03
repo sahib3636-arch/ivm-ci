@@ -119,7 +119,7 @@ jobs:
             adb shell 'cd /data/local/tmp/ivm-metal && LD_LIBRARY_PATH=. XDG_CACHE_HOME=/data/local/tmp/ivm-metal ./test_qemu_runtime_plugin /data/local/tmp/ivm-metal/libivm_metal_ffi.so' 2>&1 | tee "$GITHUB_WORKSPACE/emulator-dynamic-surface.log"
             grep -q 'PASS: dynamically loaded runtime with logical guest-surface clear and failure recovery' "$GITHUB_WORKSPACE/emulator-dynamic-surface.log"
             adb install -r "$GITHUB_WORKSPACE/ivm-repo/ivm/lab/metal_cpu/android_harness/app/build/outputs/apk/debug/app-debug.apk"
-            adb shell am instrument -w dev.ivm.dynamicprobe/.Probe 2>&1 | tee "$GITHUB_WORKSPACE/emulator-dynamic-sandbox.log"
+            adb shell am instrument -r -w dev.ivm.dynamicprobe/.Probe 2>&1 | tee "$GITHUB_WORKSPACE/emulator-dynamic-sandbox.log"
             grep -q 'IVM_DYNAMIC_SANDBOX_RESULT=0' "$GITHUB_WORKSPACE/emulator-dynamic-sandbox.log"
             grep -q 'INSTRUMENTATION_CODE: -1' "$GITHUB_WORKSPACE/emulator-dynamic-sandbox.log"
             adb push "$GITHUB_WORKSPACE/emulator-runtime/vulkan_inventory" /data/local/tmp/ivm-metal/
