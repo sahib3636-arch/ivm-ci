@@ -82,12 +82,13 @@ jobs:
           mkdir -p "$ROOT/app/src/main/jniLibs/x86_64"
           cp emulator-runtime/libivm_metal_ffi.so "$ROOT/app/src/main/jniLibs/x86_64/"
           "$TC/llvm-strip" --strip-debug "$ROOT/app/src/main/jniLibs/x86_64/libivm_metal_ffi.so"
-          "$TC/x86_64-linux-android34-clang" -std=c11 -Wall -Wextra -Werror -shared -fPIC -D_POSIX_C_SOURCE=200809L \
-            -DIVM_QEMU_METAL_BRIDGE=1 -DIVML_NO_STATIC_BACKEND -Dmain=ivm_dynamic_probe_main \
-            -Iivm-repo/ivm/lab/metal_ffi -Iivm-repo/ivm/lab/metal_ffi_runtime \
-            ivm-repo/ivm/lab/metal_cpu/test_qemu_runtime_plugin.c ivm-repo/ivm/lab/metal_ffi/library_bridge.c \
+          C="$TC/x86_64-linux-android34-clang"
+          FLAGS="-std=c11 -Wall -Wextra -Werror -fPIC -D_POSIX_C_SOURCE=200809L -Iivm-repo/ivm/lab/metal_ffi -Iivm-repo/ivm/lab/metal_ffi_runtime"
+          $C $FLAGS -DIVM_QEMU_METAL_BRIDGE=1 -DIVML_NO_STATIC_BACKEND -Dmain=ivm_dynamic_probe_main -c ivm-repo/ivm/lab/metal_cpu/test_qemu_runtime_plugin.c -o dynamic-test.o
+          $C $FLAGS -Dmain=ivm_shader_probe_main -c ivm-repo/ivm/lab/metal_ffi_runtime/test_runtime_pipeline.c -o shader-test.o
+          $C $FLAGS -shared dynamic-test.o shader-test.o ivm-repo/ivm/lab/metal_ffi/library_bridge.c \
             ivm-repo/ivm/lab/metal_ffi_runtime/runtime_bridge.c "$ROOT/jni.c" -ldl \
-            -o "$ROOT/app/src/main/jniLibs/x86_64/libivm_dynamic_probe.so"
+            -Lemulator-runtime -livm_metal_ffi -o "$ROOT/app/src/main/jniLibs/x86_64/libivm_dynamic_probe.so"
           cd "$ROOT"
           gradle --no-daemon -Dorg.gradle.jvmargs=-Xmx2g :app:assembleDebug
       - name: Download system-shader scan for private CI use
@@ -119,8 +120,12 @@ jobs:
             adb shell 'cd /data/local/tmp/ivm-metal && LD_LIBRARY_PATH=. XDG_CACHE_HOME=/data/local/tmp/ivm-metal ./test_qemu_runtime_plugin /data/local/tmp/ivm-metal/libivm_metal_ffi.so' 2>&1 | tee "$GITHUB_WORKSPACE/emulator-dynamic-surface.log"
             grep -q 'PASS: dynamically loaded runtime with logical guest-surface clear and failure recovery' "$GITHUB_WORKSPACE/emulator-dynamic-surface.log"
             adb install -r "$GITHUB_WORKSPACE/ivm-repo/ivm/lab/metal_cpu/android_harness/app/build/outputs/apk/debug/app-debug.apk"
+            adb push "$(find "$GITHUB_WORKSPACE/system-shaders" -maxdepth 1 -name '*.metallib' -type f | head -1)" /data/local/tmp/ivm-ci-shader.metallib
+            adb shell "run-as dev.ivm.dynamicprobe sh -c 'mkdir -p files; cat /data/local/tmp/ivm-ci-shader.metallib > files/shader.metallib'"
+            adb shell rm /data/local/tmp/ivm-ci-shader.metallib
             adb shell am instrument -r -w dev.ivm.dynamicprobe/.Probe 2>&1 | tee "$GITHUB_WORKSPACE/emulator-dynamic-sandbox.log"
             grep -q 'IVM_DYNAMIC_SANDBOX_RESULT=0' "$GITHUB_WORKSPACE/emulator-dynamic-sandbox.log"
+            grep -q 'IVM_SHADER_SANDBOX_RESULT=0' "$GITHUB_WORKSPACE/emulator-dynamic-sandbox.log"
             grep -q 'INSTRUMENTATION_CODE: -1' "$GITHUB_WORKSPACE/emulator-dynamic-sandbox.log"
             adb push "$GITHUB_WORKSPACE/emulator-runtime/vulkan_inventory" /data/local/tmp/ivm-metal/
             adb shell chmod 755 /data/local/tmp/ivm-metal/vulkan_inventory
