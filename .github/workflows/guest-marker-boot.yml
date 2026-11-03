@@ -24,6 +24,9 @@ jobs:
           IVM_PATCHES: 'ispstub ktrace metal-bridge-link'
           IVM_NRN_SAFE: '1'
           IVM_THREAD: single
+          IVM_SLIDEPC: 'fffffff007b1901c'
+          IVM_UTRACE: '180255b48'
+          IVM_GUEST_SPAWN_PROBE: '1' 
           NINJA_J: '2'
         run: |
           set -euo pipefail
