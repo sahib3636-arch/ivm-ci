@@ -53,7 +53,7 @@ jobs:
                       if isinstance(d.get(key),dict):print(key,'entries:',len(d[key]))
                   for path,job in d.get('LaunchDaemons',{}).items():
                       if isinstance(job,dict) and job.get('RunAtLoad') and job.get('ProgramArguments'):
-                          print('example path',path,'fields',repr({k:job.get(k) for k in ('Label','Program','ProgramArguments','RunAtLoad','LaunchEvents','UserName','StandardOutPath','POSIXSpawnType','KeepAlive')}));break
+                          print('daemon',path,'label',job.get('Label'),'program',job.get('ProgramArguments',[None])[0])
           except Exception as e:print('launchd cache read:',type(e).__name__,str(e))
           PY
               } >> "$GITHUB_WORKSPACE/inspect-out/layout.txt"
