@@ -89,6 +89,9 @@ jobs:
             *) echo "unsupported symbol scope" >&2; exit 2 ;;
           esac
           python3 "$R/ivm-repo/ivm/lab/tools/dsc-find.py" /tmp/ivm-system-dsc.bin "${patterns[@]}" > "$O/find.txt"
+          if [ "$SYMBOL_SCOPE" = spawn ]; then
+            python3 "$R/ivm-repo/ivm/lab/tools/dsc-code-window.py" /tmp/ivm-system-dsc.bin 0x180255b48:0x100 >> "$O/find.txt"
+          fi
           if [ "$SYMBOL_SCOPE" = camera_factory_callers ]; then
             python3 "$R/ivm-repo/ivm/lab/tools/dsc-resolve.py" /tmp/ivm-system-dsc.bin 0x1a81eb1c8 0x1882493c4 0x185cd2a1c 0x1c27852a4 > "$O/find.txt"
             python3 "$R/ivm-repo/ivm/lab/tools/dsc-code-window.py" /tmp/ivm-system-dsc.bin 0x1a81eb1a0:0x80 0x188249390:0x80 0x185cd29e0:0x80 0x1c2785260:0xa0 >> "$O/find.txt"
