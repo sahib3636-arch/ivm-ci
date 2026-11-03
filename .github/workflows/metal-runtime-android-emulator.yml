@@ -95,7 +95,7 @@ jobs:
             adb push "$GITHUB_WORKSPACE/emulator-runtime/test_device_selection" /data/local/tmp/ivm-metal/
             adb push "$GITHUB_WORKSPACE/emulator-runtime/test_qemu_runtime_plugin" /data/local/tmp/ivm-metal/
             adb shell chmod 755 /data/local/tmp/ivm-metal/test_qemu_runtime_plugin
-            adb shell 'cd /data/local/tmp/ivm-metal && LD_LIBRARY_PATH=. XDG_CACHE_HOME=/data/local/tmp/ivm-metal ./test_qemu_runtime_plugin ./libivm_metal_ffi.so' 2>&1 | tee "$GITHUB_WORKSPACE/emulator-dynamic-surface.log"
+            adb shell 'cd /data/local/tmp/ivm-metal && LD_LIBRARY_PATH=. XDG_CACHE_HOME=/data/local/tmp/ivm-metal ./test_qemu_runtime_plugin /data/local/tmp/ivm-metal/libivm_metal_ffi.so' 2>&1 | tee "$GITHUB_WORKSPACE/emulator-dynamic-surface.log"
             grep -q 'PASS: dynamically loaded runtime with logical guest-surface clear and failure recovery' "$GITHUB_WORKSPACE/emulator-dynamic-surface.log"
             adb push "$GITHUB_WORKSPACE/emulator-runtime/vulkan_inventory" /data/local/tmp/ivm-metal/
             adb shell chmod 755 /data/local/tmp/ivm-metal/vulkan_inventory
