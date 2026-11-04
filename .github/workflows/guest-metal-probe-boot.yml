@@ -34,6 +34,7 @@ jobs:
           IVM_METAL_GATE_FILE: '/tmp/ivm-metal-fixture-gate'
           IVM_USET: '1970505d0:34=1,180190960:35=1,18016701c:44=0,19d1b1584:46=0,19d1b1584:47=0'
           IVM_METAL_LIVE_BUFFER: '1'
+          IVM_METAL_LIVE_TEXTURE: '1'
           IVM_METAL_LIVE_QUEUE: '1'
           IVM_METAL_LIVE_COMMAND: '1'
           IVM_METAL_RUNTIME_MIRROR: '1'
@@ -108,7 +109,9 @@ jobs:
           grep -q 'IVM_GUEST_METAL_BUFFER=1' "$O/guest-marker/serial.log"
           grep -q 'IVM_GUEST_METAL_COMMAND_STATUS=4' "$O/guest-marker/serial.log"
           grep -q '\[metal-runtime-mirror\] commit_rc=0' "$O/guest-marker/serial.log"
-          echo 'PASS: guest Metal object and empty command probe; not rendering evidence' 
+          grep -q 'IVM_GUEST_METAL_CLEAR_PIXELS=1' "$O/guest-marker/serial.log"
+          grep -q '\[metal-runtime-readback\] rc=0' "$O/guest-marker/serial.log"
+          echo 'PASS: guest Metal texture clear and CPU Vulkan readback; not presentation or hardware evidence' 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
