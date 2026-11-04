@@ -109,6 +109,7 @@ jobs:
           grep -q 'IVM_GUEST_METAL_BUFFER=1' "$O/guest-marker/serial.log"
           grep -q 'IVM_GUEST_METAL_COMMAND_STATUS=4' "$O/guest-marker/serial.log"
           grep -q '\[metal-runtime-mirror\] commit_rc=0' "$O/guest-marker/serial.log"
+          grep -q 'IVM_GUEST_METAL_REUSE_PADDED_PIXELS=1' "$O/guest-marker/serial.log"
           grep -q 'IVM_GUEST_METAL_CLEAR_PIXELS=1' "$O/guest-marker/serial.log"
           grep -q '\[metal-runtime-readback\] rc=0' "$O/guest-marker/serial.log"
           echo 'PASS: guest Metal texture clear and CPU Vulkan readback; not presentation or hardware evidence' 
