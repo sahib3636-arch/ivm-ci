@@ -30,6 +30,14 @@ jobs:
           import sys
           sys.path.insert(0,sys.argv[1]);from prepare import signed_hash
           print('verified helper CodeDirectory cdhash:',signed_hash(sys.argv[2]).hex())
+          import struct
+          data=open(sys.argv[2],'rb').read()
+          signature=struct.pack('<II',0xd289aacf,0xf2a92acf)
+          positions=[i for i in range(len(data)-11) if data[i:i+8]==signature]
+          assert len(positions)==1,positions
+          opcode=struct.unpack_from('<I',data,positions[0]+8)[0]
+          assert opcode & 0xfc000000 == 0x94000000,hex(opcode)
+          print('exact scoped factory signature occurs once and precedes BL')
           PY
           rm guest-probe-artifact/marker.o guest-probe-artifact/factory.o
       - uses: actions/upload-artifact@v4
