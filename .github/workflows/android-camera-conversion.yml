@@ -31,10 +31,8 @@ jobs:
           target: google_apis
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -eu
-            A="$GITHUB_WORKSPACE/ivm-repo/ivm/lab/m6/apk/ivm-app/app/build/outputs/apk"
-            adb install "$A/debug/app-debug.apk"
-            adb install "$A/androidTest/debug/app-debug-androidTest.apk"
+            adb install "$GITHUB_WORKSPACE/ivm-repo/ivm/lab/m6/apk/ivm-app/app/build/outputs/apk/debug/app-debug.apk"
+            adb install "$GITHUB_WORKSPACE/ivm-repo/ivm/lab/m6/apk/ivm-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
             adb logcat -c
             adb shell am instrument -w -r -e class dev.ivm.emu.CameraConversionOnArtTest dev.ivm.emu.test/androidx.test.runner.AndroidJUnitRunner | tee "$GITHUB_WORKSPACE/camera-art.log"
             adb logcat -d -s IVMCameraBench:I '*:S' | tee -a "$GITHUB_WORKSPACE/camera-art.log"
