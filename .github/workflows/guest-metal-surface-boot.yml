@@ -57,7 +57,7 @@ jobs:
           done
           [ "$IVM_THREAD" = single ] && [ "$IVM_GUEST_HELPER_GATE" = 1 ] && [ -n "$IVM_METAL_GATE_FILE" ] || exit 1
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build clang-18 pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev libzstd-dev libpng-dev libjpeg-dev nettle-dev libgmp-dev liblzfse-dev libtasn1-6-dev zlib1g-dev liblz4-dev cmake procps iproute2 mesa-vulkan-drivers vulkan-tools linux-headers-$(uname -r)
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build clang-18 pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev libzstd-dev libpng-dev libjpeg-dev nettle-dev libgmp-dev liblzfse-dev libtasn1-6-dev zlib1g-dev liblz4-dev cmake procps iproute2 mesa-vulkan-drivers vulkan-tools vulkan-validationlayers linux-headers-$(uname -r)
           if ! curl -fsSL --retry 4 --retry-all-errors -o /tmp/nettle.tgz https://ftpmirror.gnu.org/nettle/nettle-3.10.1.tar.gz || ! tar -tzf /tmp/nettle.tgz >/dev/null; then
             curl -fsSL --retry 4 --retry-all-errors -o /tmp/nettle.tgz https://ftp.gnu.org/gnu/nettle/nettle-3.10.1.tar.gz
             tar -tzf /tmp/nettle.tgz >/dev/null
@@ -105,6 +105,8 @@ jobs:
           python3 "$R/ivm-repo/ivm/lab/guest_probe/prepare.py" trust "$R/guest-marker/ivm-guest-probe" "$VMD/trustcache" | tee -a "$O/prepare.log"
           if ! bash "$R/ivm-repo/ivm/bench/build-x86.sh" 6541861f4d033a0de327b5ccc5180ebac20bf461 /opt/b/eng > "$O/build.log" 2>&1; then tail -80 "$O/build.log"; exit 1; fi
           QD=$(ls -d /opt/b/keymaps-* | head -1); mkdir -p /opt/qd; cp -r "$QD" /opt/qd/keymaps
+          export VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation
+          export VK_LOADER_DEBUG=layer
           export VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -iname '*lvp*json' -type f | head -1)"
           test -n "$VK_ICD_FILENAMES" && test -r "$IVM_METAL_FFI_PROBE_PATH"
           mkdir -p "$R/.vulkan-runtime"; chmod 700 "$R/.vulkan-runtime"; export XDG_RUNTIME_DIR="$R/.vulkan-runtime"
@@ -123,9 +125,12 @@ jobs:
           grep -q 'IVM_GUEST_SHADER_DRAW_PIXELS=1' "$O/guest-marker/serial.log"
           grep -q '\[metal-runtime-encoder-selector\] drawPrimitives:vertexStart:vertexCount: handled=1 rc=0' "$O/guest-marker/serial.log"
           grep -q 'IVM_GUEST_SHADER_RESULT=0' "$O/guest-marker/serial.log"
+          grep -Ei 'insert.*VK_LAYER_KHRONOS_validation|VK_LAYER_KHRONOS_validation.*insert' "$O/guest-marker/serial.log"
+          ! grep -E 'Validation Error|VUID-' "$O/guest-marker/serial.log"
+          grep -q 'IVM_GUEST_SURFACE_SHADER_PIXELS=1' "$O/guest-marker/serial.log"
           grep -q 'IVM_GUEST_SURFACE_PIXELS=1' "$O/guest-marker/serial.log"
           grep -q 'IVM_GUEST_SURFACE_RESULT=0' "$O/guest-marker/serial.log"
-          echo 'PASS: guest IOSurface locked writeback; not compositor or zero-copy evidence' 
+          echo 'PASS: guest IOSurface shader writeback; not compositor or zero-copy evidence' 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
