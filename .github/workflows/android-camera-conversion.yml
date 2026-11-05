@@ -1,0 +1,45 @@
+name: android-camera-conversion
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'Full iVM commit SHA', required: true }
+permissions: { contents: read }
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false, persist-credentials: false }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.14.3' }
+      - name: Build test-only application and instrumentation
+        working-directory: ivm-repo/ivm/lab/m6/apk/ivm-app
+        env: { CC: clang, CXX: clang++ }
+        run: gradle --no-daemon -Dorg.gradle.jvmargs=-Xmx3g -Px86test :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Allow runner KVM for emulator only
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Compare synthetic camera conversion on emulator ART
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -euo pipefail
+            A="$GITHUB_WORKSPACE/ivm-repo/ivm/lab/m6/apk/ivm-app/app/build/outputs/apk"
+            adb install "$A/debug/app-debug.apk"
+            adb install "$A/androidTest/debug/app-debug-androidTest.apk"
+            adb logcat -c
+            adb shell am instrument -w -r -e class dev.ivm.emu.CameraConversionOnArtTest dev.ivm.emu.test/androidx.test.runner.AndroidJUnitRunner | tee "$GITHUB_WORKSPACE/camera-art.log"
+            adb logcat -d -s IVMCameraBench:I '*:S' | tee -a "$GITHUB_WORKSPACE/camera-art.log"
+            grep -q 'INSTRUMENTATION_CODE: -1' "$GITHUB_WORKSPACE/camera-art.log"
+            grep -q 'CAMERA_ART_MEDIAN_NS' "$GITHUB_WORKSPACE/camera-art.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: camera-art-log, path: camera-art.log, if-no-files-found: warn, retention-days: 7 }
