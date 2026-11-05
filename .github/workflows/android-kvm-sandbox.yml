@@ -1,0 +1,51 @@
+name: android-kvm-sandbox
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'Full iVM commit SHA', required: true }
+permissions: { contents: read }
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false, persist-credentials: false }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.14.3' }
+      - name: Test and cross-compile sandbox diagnostic with clang
+        shell: bash
+        env: { CC: clang }
+        run: |
+          set -euo pipefail
+          D=ivm-repo/ivm/lab/android_kvm
+          clang -D_GNU_SOURCE -std=c11 -Wall -Wextra -Werror "$D/kvm_probe.c" "$D/test_kvm_probe.c" -o /tmp/test-kvm-probe
+          /tmp/test-kvm-probe
+          TC="${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME}}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          for entry in 'x86_64:x86_64-linux-android34' 'arm64-v8a:aarch64-linux-android34'; do
+            arch=${entry%%:*}; target=${entry#*:}; mkdir -p "$D/harness/app/src/main/jniLibs/$arch"
+            "$TC/$target-clang" -D_GNU_SOURCE -std=c11 -Wall -Wextra -Werror -shared -fPIC "$D/kvm_probe.c" "$D/harness/jni.c" -o "$D/harness/app/src/main/jniLibs/$arch/libivm_kvm_probe.so"
+          done
+          cd "$D/harness"; gradle --no-daemon -Dorg.gradle.jvmargs=-Xmx2g :app:assembleDebug
+      - name: Allow runner KVM for emulator only
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Probe Android app sandbox on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb install "$GITHUB_WORKSPACE/ivm-repo/ivm/lab/android_kvm/harness/app/build/outputs/apk/debug/app-debug.apk"
+            adb shell am instrument -w -r dev.ivm.kvmprobe/.Probe 2>&1 | tee "$GITHUB_WORKSPACE/kvm-sandbox.log"
+            grep -q 'IVM_KVM_STAGE=' "$GITHUB_WORKSPACE/kvm-sandbox.log"
+            grep -q 'SELFTEST=1' "$GITHUB_WORKSPACE/kvm-sandbox.log"
+            grep -q 'INSTRUMENTATION_CODE: -1' "$GITHUB_WORKSPACE/kvm-sandbox.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: android-kvm-sandbox-log, path: kvm-sandbox.log, if-no-files-found: warn, retention-days: 7 }
