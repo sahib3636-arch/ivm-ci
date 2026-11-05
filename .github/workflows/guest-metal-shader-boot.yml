@@ -117,8 +117,10 @@ jobs:
           grep -q 'IVM_GUEST_METAL_CLEAR_PIXELS=1' "$O/guest-marker/serial.log"
           grep -q '\[metal-runtime-readback\] rc=0' "$O/guest-marker/serial.log"
           grep -q 'IVM_GUEST_SHADER_PIPELINE_END' "$O/guest-marker/serial.log"
+          grep -q 'IVM_GUEST_SHADER_DRAW_PIXELS=1' "$O/guest-marker/serial.log"
+          grep -q '\[metal-runtime-encoder-selector\] drawPrimitives:vertexStart:vertexCount: handled=1 rc=0' "$O/guest-marker/serial.log"
           grep -q 'IVM_GUEST_SHADER_RESULT=0' "$O/guest-marker/serial.log"
-          echo 'PASS: guest specialized system shader pipeline, not shader draw or hardware evidence' 
+          echo 'PASS: guest system shader draw through CPU Vulkan; not compositor or hardware evidence' 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
