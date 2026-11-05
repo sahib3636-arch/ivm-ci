@@ -111,7 +111,7 @@ jobs:
         with: { gradle-version: '8.14.3' }
       - name: JVM unit tests
         working-directory: ${{ env.APP }}
-        run: gradle --no-daemon -Dorg.gradle.jvmargs=-Xmx3g :app:testDebugUnitTest --tests 'dev.ivm.emu.InfernoPlanTest' --tests 'dev.ivm.emu.BootPlanTest' --tests 'dev.ivm.emu.KeymapTest' --tests 'dev.ivm.emu.ShmFbTest' --tests 'dev.ivm.emu.ShmAudioTest' --tests 'dev.ivm.emu.InfernoStorageNetTest' --tests 'dev.ivm.emu.VncReconnectTest' --tests 'dev.ivm.emu.CamFeedTest' --tests 'dev.ivm.emu.PerfCoresTest'
+        run: gradle --no-daemon -Dorg.gradle.jvmargs=-Xmx3g :app:testDebugUnitTest --tests 'dev.ivm.emu.InfernoPlanTest' --tests 'dev.ivm.emu.BootPlanTest' --tests 'dev.ivm.emu.KeymapTest' --tests 'dev.ivm.emu.ShmFbTest' --tests 'dev.ivm.emu.ShmAudioTest' --tests 'dev.ivm.emu.UsbMuxPairerTest' --tests 'dev.ivm.emu.InfernoStorageNetTest' --tests 'dev.ivm.emu.VncReconnectTest' --tests 'dev.ivm.emu.CamFeedTest' --tests 'dev.ivm.emu.PerfCoresTest'
       - name: import tests on ART (API 34 x86_64, R8-minified artTest build)
         uses: reactivecircus/android-emulator-runner@v2
         with:
