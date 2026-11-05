@@ -31,7 +31,7 @@ jobs:
           target: google_apis
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -euo pipefail
+            set -eu
             A="$GITHUB_WORKSPACE/ivm-repo/ivm/lab/m6/apk/ivm-app/app/build/outputs/apk"
             adb install "$A/debug/app-debug.apk"
             adb install "$A/androidTest/debug/app-debug-androidTest.apk"
