@@ -84,6 +84,7 @@ jobs:
           python3 -u "$R/ivm-repo/ivm/bench/bench.py" /opt/b/eng /opt/qd "$VMD" "$O" guest-marker 4 3G 512 2>&1 | tee "$O/bench.log"
           grep -q 'IVM_GUEST_IO_START' "$O/guest-marker/serial.log"
           grep -q 'IVM_GUEST_IO_DONE' "$O/guest-marker/serial.log"
+          grep -q 'IVM_GUEST_NETWORK_RESULT=0' "$O/guest-marker/serial.log"
           test "$(grep -c 'IVM_GUEST_IO_PASS' "$O/guest-marker/serial.log")" -ge 4
           echo 'PASS: disposable guest synthetic IO integrity, not phone performance' 
       - uses: actions/upload-artifact@v4
