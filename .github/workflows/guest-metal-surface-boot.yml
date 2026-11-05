@@ -29,6 +29,8 @@ jobs:
           IVM_SLIDEPC: 'fffffff007b1901c'
           IVM_UTRACE: '180255b48,180255d18'
           IVM_GUEST_SPAWN_PROBE: '1'
+          IVM_OSLOG: '180055c88'
+          IVM_OSLOG_N: '60000'
           IVM_METAL_GUEST_FACTORY_PROBE: '1'
           IVM_GUEST_HELPER_GATE: '1'
           IVM_METAL_GATE_FILE: '/tmp/ivm-metal-fixture-gate'
