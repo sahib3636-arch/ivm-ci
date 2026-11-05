@@ -1,0 +1,135 @@
+name: guest-metal-shader-boot
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'Full iVM commit', required: true }
+      marker_run: { description: 'Guest marker build run ID', required: true }
+permissions: { contents: read, actions: read }
+jobs:
+  boot:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false, persist-credentials: false }
+      - uses: actions/download-artifact@v4
+        with: { name: guest-shader-marker, path: guest-marker, run-id: '${{ inputs.marker_run }}', github-token: '${{ github.token }}' }
+      - uses: actions/download-artifact@v4
+        with: { name: metal-runtime-ffi-linux-arm64, path: metal-ffi, run-id: '41637617686', github-token: '${{ github.token }}' }
+      - name: Prepare disposable guest disk and boot marker
+        shell: bash
+        env:
+          IVM_PAT: '${{ secrets.IVM_PAT }}'
+          CC_OVERRIDE: clang
+          CC: clang
+          CXX: clang++
+          IVM_PATCHES: 'ispstub ktrace metal-bridge-link'
+          IVM_NRN_SAFE: '1'
+          IVM_THREAD: single
+          IVM_SLIDEPC: 'fffffff007b1901c'
+          IVM_UTRACE: '180255b48,180255d18'
+          IVM_GUEST_SPAWN_PROBE: '1'
+          IVM_METAL_GUEST_FACTORY_PROBE: '1'
+          IVM_GUEST_HELPER_GATE: '1'
+          IVM_METAL_GATE_FILE: '/tmp/ivm-metal-fixture-gate'
+          IVM_USET: '1970505d0:34=1,180190960:35=1,18016701c:44=0,19d1b1584:46=0,19d1b1584:47=0'
+          IVM_METAL_LIBRARY_PROBE: '1'
+          IVM_METAL_LIVE_LIBRARY: '1'
+          IVM_METAL_LIVE_SPECIALIZATION: '1'
+          IVM_METAL_PIPELINE_PROBE: '1'
+          IVM_METAL_LIVE_BUFFER: '1'
+          IVM_METAL_LIVE_TEXTURE: '1'
+          IVM_METAL_LIVE_QUEUE: '1'
+          IVM_METAL_LIVE_COMMAND: '1'
+          IVM_METAL_RUNTIME_MIRROR: '1'
+          IVM_METAL_RUNTIME_GUEST_PIPELINE: '1'
+          IVM_METAL_FFI_PROBE_PATH: '${{ github.workspace }}/metal-ffi/libivm_metal_ffi.so'  
+          NINJA_J: '2'
+        run: |
+          set -euo pipefail
+          R="$GITHUB_WORKSPACE"; O="$R/guest-marker-out"; mkdir -p "$O" /opt/b /opt/vm /opt/dl
+          # ivm_live_enabled refuses all bridge operations without both hooks.
+          for hook in '1970505d0:34=' '180190960:35=' '18016701c:44=' '19d1b1584:46='; do
+            case ",$IVM_USET," in *",$hook"*) ;; *) echo "Missing required hook: $hook" >&2; exit 1;; esac
+          done
+          [ "$IVM_THREAD" = single ] && [ "$IVM_GUEST_HELPER_GATE" = 1 ] && [ -n "$IVM_METAL_GATE_FILE" ] || exit 1
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build clang-18 pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev libzstd-dev libpng-dev libjpeg-dev nettle-dev libgmp-dev liblzfse-dev libtasn1-6-dev zlib1g-dev liblz4-dev cmake procps iproute2 mesa-vulkan-drivers vulkan-tools linux-headers-$(uname -r)
+          if ! curl -fsSL --retry 4 --retry-all-errors -o /tmp/nettle.tgz https://ftpmirror.gnu.org/nettle/nettle-3.10.1.tar.gz || ! tar -tzf /tmp/nettle.tgz >/dev/null; then
+            curl -fsSL --retry 4 --retry-all-errors -o /tmp/nettle.tgz https://ftp.gnu.org/gnu/nettle/nettle-3.10.1.tar.gz
+            tar -tzf /tmp/nettle.tgz >/dev/null
+          fi
+          tar -xzf /tmp/nettle.tgz -C /tmp
+          (cd /tmp/nettle-3.10.1 && ./configure --prefix=/usr/local --disable-documentation > "$O/nettle.log" && make -j2 >> "$O/nettle.log" && sudo make install >/dev/null)
+          sudo ldconfig; pipx install meson==1.7.0 || pip3 install --user meson==1.7.0
+          sudo install -d -m 700 -o "$(id -u)" -g "$(id -g)" /home/user/.tokens
+          umask 077; printf %s "$IVM_PAT" > /home/user/.tokens/github.pat
+          trap 'rm -f /home/user/.tokens/github.pat' EXIT
+          bash "$R/ivm-repo/ivm/inferno/gh-release.sh" get diskset-setupdone-18A5351d /opt/dl > "$O/download.log" 2>&1
+          rm -f /home/user/.tokens/github.pat; trap - EXIT
+          unset IVM_PAT GH_TOKEN GITHUB_TOKEN ACTIONS_RUNTIME_TOKEN ACTIONS_ID_TOKEN_REQUEST_TOKEN
+          zstd -dc /opt/dl/*.tar.zst | tar -C /opt/vm -xS; rm -rf /opt/dl
+          VMD=$(dirname "$(find /opt/vm -maxdepth 3 -name entry.json -type f | head -1)")
+          test -f "$VMD/root" && test -f "$VMD/trustcache"
+          git clone -q --depth 1 -b v0.3.21 https://github.com/linux-apfs/linux-apfs-rw /tmp/apfsrw
+          make -C /tmp/apfsrw -j2 KDIR=/lib/modules/$(uname -r)/build > "$O/apfs-build.log" 2>&1
+          sudo insmod /tmp/apfsrw/apfs.ko
+          LOOP=$(sudo losetup -f --show -o 24576 "$VMD/root")
+          cleanup() { sudo umount /mnt/ivm-guest-marker 2>/dev/null || true; sudo losetup -d "$LOOP" || true; }
+          trap cleanup EXIT
+          sudo mkdir -p /mnt/ivm-guest-marker
+          sudo mount -t apfs -o vol=0,readwrite "$LOOP" /mnt/ivm-guest-marker
+          sudo python3 "$R/ivm-repo/ivm/lab/guest_probe/prepare.py" system-replace-test-slot /mnt/ivm-guest-marker "$R/guest-marker/ivm-guest-probe" | tee -a "$O/prepare.log"
+          sync; sudo umount /mnt/ivm-guest-marker
+          sudo mount -t apfs -o vol=0,ro "$LOOP" /mnt/ivm-guest-marker
+          sudo python3 - <<'PYVERIFY'
+          import plistlib
+          with open('/mnt/ivm-guest-marker/System/Library/xpc/launchd.plist','rb') as f:d=plistlib.load(f)
+          key='/System/Library/LaunchDaemons/com.apple.DumpPanic.plist'
+          job=d['LaunchDaemons'][key]
+          print('Persisted disposable launchd replacement:',job.get('Program'))
+          assert job.get('Program')=='/usr/libexec/ivm-guest-probe' 
+          PYVERIFY
+          sudo cmp "$R/guest-marker/ivm-guest-probe" /mnt/ivm-guest-marker/usr/libexec/ivm-guest-probe
+          sudo ls -l /mnt/ivm-guest-marker/usr/libexec/ivm-guest-probe
+          sudo umount /mnt/ivm-guest-marker
+          sudo losetup -d "$LOOP"; trap - EXIT
+          python3 - "$VMD/trustcache" <<'PYTRUST'
+          import struct,sys
+          d=open(sys.argv[1],'rb').read()
+          print('trustcache size',len(d),'prefix',d[:32].hex(),'count@20',struct.unpack_from('<I',d,20)[0] if len(d)>=24 else None)
+          PYTRUST
+          python3 "$R/ivm-repo/ivm/lab/guest_probe/prepare.py" trust "$R/guest-marker/ivm-guest-probe" "$VMD/trustcache" | tee -a "$O/prepare.log"
+          if ! bash "$R/ivm-repo/ivm/bench/build-x86.sh" 6541861f4d033a0de327b5ccc5180ebac20bf461 /opt/b/eng > "$O/build.log" 2>&1; then tail -80 "$O/build.log"; exit 1; fi
+          QD=$(ls -d /opt/b/keymaps-* | head -1); mkdir -p /opt/qd; cp -r "$QD" /opt/qd/keymaps
+          export VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -iname '*lvp*json' -type f | head -1)"
+          test -n "$VK_ICD_FILENAMES" && test -r "$IVM_METAL_FFI_PROBE_PATH"
+          mkdir -p "$R/.vulkan-runtime"; chmod 700 "$R/.vulkan-runtime"; export XDG_RUNTIME_DIR="$R/.vulkan-runtime"
+          vulkaninfo --summary > "$O/vulkan-summary.log" 2>&1
+          grep -Eq 'deviceType[[:space:]]*=[[:space:]]*PHYSICAL_DEVICE_TYPE_CPU' "$O/vulkan-summary.log"
+          sudo --preserve-env unshare -n -- sh -c 'ip link set lo up; exec setpriv --reuid="$1" --regid="$2" --init-groups python3 -u "$3" /opt/b/eng /opt/qd "$4" "$5" guest-marker 4 3G 512' sh "$(id -u)" "$(id -g)" "$R/ivm-repo/ivm/bench/bench.py" "$VMD" "$O" 2>&1 | tee "$O/bench.log"
+          grep -q 'IVM_GUEST_METAL_PROBE_START' "$O/guest-marker/serial.log"
+          grep -q 'IVM_GUEST_METAL_PROBE_END' "$O/guest-marker/serial.log"
+          grep -q 'IVM_GUEST_METAL_BUFFER=1' "$O/guest-marker/serial.log"
+          grep -q 'IVM_GUEST_METAL_COMMAND_STATUS=4' "$O/guest-marker/serial.log"
+          grep -q '\[metal-runtime-mirror\] commit_rc=0' "$O/guest-marker/serial.log"
+          grep -q 'IVM_GUEST_METAL_REUSE_PADDED_PIXELS=1' "$O/guest-marker/serial.log"
+          grep -q 'IVM_GUEST_METAL_CLEAR_PIXELS=1' "$O/guest-marker/serial.log"
+          grep -q '\[metal-runtime-readback\] rc=0' "$O/guest-marker/serial.log"
+          grep -q 'IVM_GUEST_SHADER_PIPELINE_END' "$O/guest-marker/serial.log"
+          grep -q 'IVM_GUEST_SHADER_RESULT=0' "$O/guest-marker/serial.log"
+          echo 'PASS: guest specialized system shader pipeline, not shader draw or hardware evidence' 
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: guest-metal-shader-boot-results
+          path: |
+            guest-marker-out/bench.log
+            guest-marker-out/prepare.log
+            guest-marker-out/build.log
+            guest-marker-out/vulkan-summary.log
+            guest-marker-out/apfs-build.log
+            guest-marker-out/guest-marker/serial.log
+            guest-marker-out/guest-marker/*.png
+          if-no-files-found: warn
+          retention-days: 7
