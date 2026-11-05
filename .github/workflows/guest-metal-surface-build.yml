@@ -1,0 +1,46 @@
+name: guest-metal-surface-build
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'Full iVM commit', required: true }
+permissions: { contents: read }
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false, persist-credentials: false }
+      - name: Cross-compile and validate disposable iOS marker
+        env: { CC: clang }
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq clang lld python3
+          D=ivm-repo/ivm/lab/guest_probe
+          (cd "$D" && python3 -m unittest -v test_prepare)
+          mkdir -p guest-probe-artifact
+          clang -target arm64-apple-ios14.0 -ffreestanding -Wall -Wextra -Werror -O2 -c "$D/surface_marker.c" -o guest-probe-artifact/marker.o
+          clang -target arm64-apple-ios14.0 -ffreestanding -Wall -Wextra -Werror -O2 -c "$D/shader_probe.c" -o guest-probe-artifact/shader.o
+          clang -target arm64-apple-ios14.0 -ffreestanding -Wall -Wextra -Werror -O2 -c "$D/surface_probe.c" -o guest-probe-artifact/surface.o
+          clang -target arm64-apple-ios14.0 -c "$D/factory_probe.s" -o guest-probe-artifact/factory.o
+          ls -l /usr/bin/*lld*
+          LD=$(command -v ld64.lld || command -v ld64.lld-18 || command -v ld64.lld-19 || true); test -n "$LD"
+          "$LD" -arch arm64 -platform_version ios 14.0 14.0 -e _main -adhoc_codesign -o guest-probe-artifact/ivm-guest-probe guest-probe-artifact/marker.o guest-probe-artifact/shader.o guest-probe-artifact/surface.o guest-probe-artifact/factory.o "$D/libSystem.tbd" "$D/libobjc.tbd" "$D/Metal.tbd" "$D/IOSurface.tbd"
+          python3 - "$D" guest-probe-artifact/ivm-guest-probe <<'PY'
+          import sys
+          sys.path.insert(0,sys.argv[1]);from prepare import signed_hash
+          print('verified helper CodeDirectory cdhash:',signed_hash(sys.argv[2]).hex())
+          import struct
+          data=open(sys.argv[2],'rb').read()
+          signature=struct.pack('<II',0xd289aacf,0xf2a92acf)
+          positions=[i for i in range(len(data)-11) if data[i:i+8]==signature]
+          assert len(positions)==1,positions
+          opcode=struct.unpack_from('<I',data,positions[0]+8)[0]
+          assert opcode & 0xfc000000 == 0x94000000,hex(opcode)
+          print('exact scoped factory signature occurs once and precedes BL')
+          PY
+          rm guest-probe-artifact/marker.o guest-probe-artifact/shader.o guest-probe-artifact/surface.o guest-probe-artifact/factory.o
+      - uses: actions/upload-artifact@v4
+        with: { name: guest-surface-marker, path: guest-probe-artifact/ivm-guest-probe, retention-days: 3 }
