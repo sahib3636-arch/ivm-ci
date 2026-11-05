@@ -22,7 +22,7 @@ jobs:
           CC_OVERRIDE: clang
           CC: clang
           CXX: clang++
-          IVM_PATCHES: 'panelhz fpslog adpdirty ucdyn ispstub ktrace shmfb paneladapt usb-ncm-net shmaudio'
+          IVM_PATCHES: 'panelhz android-perf fpslog adpdirty ucdyn ispstub ktrace shmfb paneladapt usb-ncm-net shmaudio'
           IVM_NRN_SAFE: '1'
           IVM_THREAD: '${{ inputs.tcg_mode }}'
           IVM_SLIDEPC: 'fffffff007b1901c'
