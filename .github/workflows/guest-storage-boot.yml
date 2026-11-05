@@ -89,27 +89,29 @@ jobs:
           export IVM_SHM_AUDIO_PATH="$O/shmaudio.bin"
           export MACHINE_EXTRA="usb-uplink-type=net,usb-uplink-addr=n0"
           export QEMU_EXTRA="-netdev|user,id=n0|-audiodev|none,id=snd0"
+          cat > /tmp/ivm-echo.py <<'PYECHO'
+          import socket
+          s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+          s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+          s.bind(("127.0.0.1", 18080))
+          s.listen(8)
+          while True:
+              c, _ = s.accept()
+              d = c.recv(256)
+              if b"IVM_NET_PING" in d:
+                  c.sendall(b"IVM_NET_PONG_2026\n")
+              c.close()
+          PYECHO
+          sed -i 's/^          //' /tmp/ivm-echo.py
           sudo --preserve-env unshare -n -- sh -c '
             ip link set lo up
-            python3 -u -c "
-import socket
-srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-srv.bind(("127.0.0.1", 18080))
-srv.listen(8)
-while True:
-    c, _ = srv.accept()
-    data = c.recv(256)
-    if b"IVM_NET_PING" in data:
-        c.sendall(b"IVM_NET_PONG_2026\n")
-    c.close()
-" &
+            python3 -u /tmp/ivm-echo.py &
             SRV_PID=$!
             trap "kill $SRV_PID 2>/dev/null || true" EXIT
             setpriv --reuid="$1" --regid="$2" --init-groups python3 -u "$3" /opt/b/eng /opt/qd "$4" "$5" guest-marker 4 3G 512
           ' sh "$(id -u)" "$(id -g)" "$R/ivm-repo/ivm/bench/bench.py" "$VMD" "$O" 2>&1 | tee "$O/bench.log"
           python3 "$R/ivm-repo/ivm/bench/shm_frame_png.py" "$O/shmfb.bin" "$O/guest-marker/shmfb-final.png" | tee "$O/shmfb-summary.txt"
-          python3 - "$O/shmfb.bin" "$O/shmaudio.bin" <<'PYSHM' | tee -a "$O/shmfb-summary.txt"
+          cat > /tmp/ivm-shm-check.py <<'PYSHM'
           import struct, sys
           fb = open(sys.argv[1], "rb").read(64)
           f_magic, f_ver, f_w, f_h, f_stride, f_off, f_flags, f_bounds = struct.unpack_from("<8I", fb, 0)
@@ -122,6 +124,8 @@ while True:
           print(f"SHMAUDIO_CHECK magic={a_magic:#x} rate={a_rate} ch={a_ch} bits={a_bits} active={a_act} write_bytes={a_wb} nonzero_frames={a_nz}")
           assert a_magic == 0x414D5649 and a_rate == 48000 and a_ch == 2 and a_bits == 16
           PYSHM
+          sed -i 's/^          //' /tmp/ivm-shm-check.py
+          python3 /tmp/ivm-shm-check.py "$O/shmfb.bin" "$O/shmaudio.bin" | tee -a "$O/shmfb-summary.txt"
           grep -q 'IVM_GUEST_IO_START' "$O/guest-marker/serial.log"
           grep -q 'IVM_GUEST_IO_DONE' "$O/guest-marker/serial.log"
           grep -q 'IVM_GUEST_PERIPHERALS_DONE' "$O/guest-marker/serial.log"
