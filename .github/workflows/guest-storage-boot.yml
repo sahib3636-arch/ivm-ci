@@ -22,7 +22,7 @@ jobs:
           CC_OVERRIDE: clang
           CC: clang
           CXX: clang++
-          IVM_PATCHES: 'ispstub ktrace metal-bridge-link'
+          IVM_PATCHES: 'panelhz fpslog adpdirty ucdyn ispstub ktrace shmfb paneladapt usb-ncm-net shmaudio'
           IVM_NRN_SAFE: '1'
           IVM_THREAD: '${{ inputs.tcg_mode }}'
           IVM_SLIDEPC: 'fffffff007b1901c'
@@ -35,7 +35,7 @@ jobs:
           R="$GITHUB_WORKSPACE"; O="$R/guest-marker-out"; mkdir -p "$O" /opt/b /opt/vm /opt/dl
           case "$IVM_THREAD" in single|multi) ;; *) echo 'invalid TCG mode' >&2; exit 1;; esac
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build clang-18 pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev libzstd-dev libpng-dev libjpeg-dev nettle-dev libgmp-dev liblzfse-dev libtasn1-6-dev zlib1g-dev liblz4-dev cmake procps linux-headers-$(uname -r)
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq iproute2 build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build clang-18 pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev libzstd-dev libpng-dev libjpeg-dev nettle-dev libgmp-dev liblzfse-dev libtasn1-6-dev zlib1g-dev liblz4-dev cmake procps linux-headers-$(uname -r)
           if ! curl -fsSL --retry 4 --retry-all-errors -o /tmp/nettle.tgz https://ftpmirror.gnu.org/nettle/nettle-3.10.1.tar.gz || ! tar -tzf /tmp/nettle.tgz >/dev/null; then
             curl -fsSL --retry 4 --retry-all-errors -o /tmp/nettle.tgz https://ftp.gnu.org/gnu/nettle/nettle-3.10.1.tar.gz
             tar -tzf /tmp/nettle.tgz >/dev/null
@@ -83,13 +83,52 @@ jobs:
           python3 "$R/ivm-repo/ivm/lab/guest_probe/prepare.py" trust "$R/guest-marker/ivm-guest-probe" "$VMD/trustcache" | tee -a "$O/prepare.log"
           if ! bash "$R/ivm-repo/ivm/bench/build-x86.sh" 6541861f4d033a0de327b5ccc5180ebac20bf461 /opt/b/eng > "$O/build.log" 2>&1; then tail -80 "$O/build.log"; exit 1; fi
           QD=$(ls -d /opt/b/keymaps-* | head -1); mkdir -p /opt/qd; cp -r "$QD" /opt/qd/keymaps
-          python3 -u "$R/ivm-repo/ivm/bench/bench.py" /opt/b/eng /opt/qd "$VMD" "$O" guest-marker 4 3G 512 2>&1 | tee "$O/bench.log"
+          truncate -s $((4096 + 828 * 1792 * 4)) "$O/shmfb.bin"
+          truncate -s $((64 + 65536)) "$O/shmaudio.bin"
+          export IVM_SHM_FB_PATH="$O/shmfb.bin"
+          export IVM_SHM_AUDIO_PATH="$O/shmaudio.bin"
+          export MACHINE_EXTRA="usb-uplink-type=net,usb-uplink-addr=n0"
+          export QEMU_EXTRA="-netdev|user,id=n0|-audiodev|none,id=snd0"
+          sudo --preserve-env unshare -n -- sh -c '
+            ip link set lo up
+            python3 -u -c "
+import socket
+srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+srv.bind(("127.0.0.1", 18080))
+srv.listen(8)
+while True:
+    c, _ = srv.accept()
+    data = c.recv(256)
+    if b"IVM_NET_PING" in data:
+        c.sendall(b"IVM_NET_PONG_2026\n")
+    c.close()
+" &
+            SRV_PID=$!
+            trap "kill $SRV_PID 2>/dev/null || true" EXIT
+            setpriv --reuid="$1" --regid="$2" --init-groups python3 -u "$3" /opt/b/eng /opt/qd "$4" "$5" guest-marker 4 3G 512
+          ' sh "$(id -u)" "$(id -g)" "$R/ivm-repo/ivm/bench/bench.py" "$VMD" "$O" 2>&1 | tee "$O/bench.log"
+          python3 "$R/ivm-repo/ivm/bench/shm_frame_png.py" "$O/shmfb.bin" "$O/guest-marker/shmfb-final.png" | tee "$O/shmfb-summary.txt"
+          python3 - "$O/shmfb.bin" "$O/shmaudio.bin" <<'PYSHM' | tee -a "$O/shmfb-summary.txt"
+          import struct, sys
+          fb = open(sys.argv[1], "rb").read(64)
+          f_magic, f_ver, f_w, f_h, f_stride, f_off, f_flags, f_bounds = struct.unpack_from("<8I", fb, 0)
+          f_seq, f_dirty = struct.unpack_from("<QQ", fb, 32)
+          print(f"SHMFB_CHECK magic={f_magic:#x} seq={f_seq} even={(f_seq & 1) == 0} dirty_px={f_dirty} bounds={f_bounds:#x}")
+          assert f_magic == 0x494D5646 and f_seq >= 2 and (f_seq & 1) == 0 and f_dirty > 0
+          au = open(sys.argv[2], "rb").read(64)
+          a_magic, a_ver, a_rate, a_ch, a_bits, a_off, a_ring, a_act = struct.unpack_from("<8I", au, 0)
+          a_wb, a_nz = struct.unpack_from("<QQ", au, 32)
+          print(f"SHMAUDIO_CHECK magic={a_magic:#x} rate={a_rate} ch={a_ch} bits={a_bits} active={a_act} write_bytes={a_wb} nonzero_frames={a_nz}")
+          assert a_magic == 0x414D5649 and a_rate == 48000 and a_ch == 2 and a_bits == 16
+          PYSHM
           grep -q 'IVM_GUEST_IO_START' "$O/guest-marker/serial.log"
           grep -q 'IVM_GUEST_IO_DONE' "$O/guest-marker/serial.log"
           grep -q 'IVM_GUEST_PERIPHERALS_DONE' "$O/guest-marker/serial.log"
           grep -q 'IVM_GUEST_NETWORK_RESULT=0' "$O/guest-marker/serial.log"
+          grep -q 'IVM_GUEST_NETWORK_TCP_ROUNDTRIP=1' "$O/guest-marker/serial.log"
           test "$(grep -c 'IVM_GUEST_IO_PASS' "$O/guest-marker/serial.log")" -ge 4
-          echo 'PASS: disposable guest synthetic IO integrity, not phone performance' 
+          echo 'PASS: disposable guest storage, USB CDC-NCM TCP roundtrip, shmfb seqlock, and shmaudio ring verified' 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -99,6 +138,7 @@ jobs:
             guest-marker-out/prepare.log
             guest-marker-out/build.log
             guest-marker-out/apfs-build.log
+            guest-marker-out/shmfb-summary.txt
             guest-marker-out/guest-marker/serial.log
             guest-marker-out/guest-marker/*.png
           if-no-files-found: warn

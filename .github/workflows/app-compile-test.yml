@@ -24,7 +24,7 @@ jobs:
       - name: Compile app and run JVM launch-plan tests
         working-directory: ivm-repo/ivm/lab/m6/apk/ivm-app
         env: { CC: clang, CXX: clang++, JAVA_TOOL_OPTIONS: "-Drobolectric.dependency.repo.url=https://repo.maven.apache.org/maven2" }
-        run: gradle --no-daemon -Dorg.gradle.jvmargs=-Xmx3g :app:testDebugUnitTest --tests 'dev.ivm.emu.InfernoPlanTest' --tests 'dev.ivm.emu.BootPlanTest' --tests 'dev.ivm.emu.ShmFbTest' --tests 'dev.ivm.emu.PerfCoresTest' --tests 'dev.ivm.emu.VncReconnectTest' --tests 'dev.ivm.emu.CamFeedTest' --tests 'dev.ivm.emu.CameraConversionBenchmarkTest'
+        run: gradle --no-daemon -Dorg.gradle.jvmargs=-Xmx3g :app:testDebugUnitTest --tests 'dev.ivm.emu.InfernoPlanTest' --tests 'dev.ivm.emu.BootPlanTest' --tests 'dev.ivm.emu.ShmFbTest' --tests 'dev.ivm.emu.ShmAudioTest' --tests 'dev.ivm.emu.InfernoStorageNetTest' --tests 'dev.ivm.emu.PerfCoresTest' --tests 'dev.ivm.emu.VncReconnectTest' --tests 'dev.ivm.emu.CamFeedTest' --tests 'dev.ivm.emu.CameraConversionBenchmarkTest'
 
       - name: Preserve JVM test results
         if: always()
