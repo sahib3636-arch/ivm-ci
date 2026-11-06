@@ -30,7 +30,7 @@ env:
   # tlbsz10/cpregcache (E111) + panelwh (E112) + shmfb (E113). Keep in one place; the cache key
   # below does not hash this line, so changing it must be paired with a key change.
   DEFAULT_PATCHES: >-
-    panelhz android-perf fpslog hle-bilerp hle-nn inljc jcttbr0 fpixc fpixc_host fpzero fpden
+    panelhz android-perf adpf-honest fpslog hle-bilerp hle-nn inljc jcttbr0 fpixc fpixc_host fpzero fpden
     nobti jcbits14 asidlog cflagsinline jclog gxfinline zvainline adpdirty tlbrange vtlb16
     a13-ipi-replay haltpoll jcshared hle-lb hle-r3 hle-sob hle-zva hle-bq tbfollow tbfollow2
     tbfollow3 tbfollow4 zdiscard jitdiscard tbarray ucdyn ispstub ktrace metal-bridge-link monitor-watch-cleanup teardown-fastexit
