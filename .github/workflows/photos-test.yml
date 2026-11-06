@@ -13,9 +13,7 @@ on:
       ktrace: { description: '1 = kernel data-abort trap; 2 = also BRK trap; 3 = kill trace (brk+triage+psignal+memorystatus+exit1, PCs from this kernelcache)', default: '0' }
       photos_via: { description: "'' = Photos icon/Spotlight; viewer = open Photos from the Camera thumbnail", default: '' }
       photos_launch: { description: "'' = Photos home-icon tap (E13 config, reproduces the crash); spotlight = Spotlight search", default: '' }
-      metal_single: { description: '1 = single TCG thread for opt-in experimental live buffer test', default: '0' }
-      allow_mttcg: { description: '1 = allow live Metal bridge under multi-thread TCG (IVM_METAL_ALLOW_MTTCG=1)', default: '0' }
-      runtime_device: { description: 'IVM_METAL_RUNTIME_DEVICE (cpu | hardware | auto)', default: 'auto' }
+      metal_single: { description: '1 = single TCG thread; mttcg = multi-TCG with IVM_METAL_ALLOW_MTTCG=1 + auto runtime device', default: '0' }
       ffi_run: { description: 'Optional ARM FFI workflow run ID for network-isolated guest library parse diagnostic', default: '' }
       library_probe: { description: '1 = read default.metallib header in guest; system code only', default: '0' }
       limits_discovery: { description: '1 = diagnostic nil-limits instruction bypass, NOT a Metal implementation', default: '0' }
@@ -105,9 +103,9 @@ jobs:
           IVM_SENT_RET: ''
           IVM_UTRACE_BT: '1'
           IVM_THREAD: "${{ inputs.metal_single == '1' && 'single' || 'multi' }}"
-          IVM_METAL_ALLOW_MTTCG: "${{ inputs.allow_mttcg }}"
-          IVM_METAL_RUNTIME_DEVICE: "${{ inputs.runtime_device }}"
-          IVM_METAL_CAMERA_FACTORY_EXPERIMENT: "${{ inputs.allow_mttcg == '1' && '1' || '0' }}"
+          IVM_METAL_ALLOW_MTTCG: "${{ inputs.metal_single == 'mttcg' && '1' || '0' }}"
+          IVM_METAL_RUNTIME_DEVICE: "${{ inputs.metal_single == 'mttcg' && 'auto' || 'cpu' }}"
+          IVM_METAL_CAMERA_FACTORY_EXPERIMENT: "${{ inputs.metal_single == 'mttcg' && '1' || '0' }}"
           IVM_METAL_QUIET: '0'
           IVM_METAL_LIBRARY_PROBE: "${{ inputs.library_probe }}"
           IVM_METAL_LIVE_LIBRARY: "${{ (inputs.live_library == 'probe' || inputs.live_library == 'special' || inputs.live_library == 'special-gated' || inputs.live_library == 'runtime-gated' || (inputs.live_library == 'runtime-guest-gated' || (inputs.live_library == 'runtime-surface-gated' || inputs.live_library == 'runtime-present-gated'))) && '1' || inputs.live_library }}"
