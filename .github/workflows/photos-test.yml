@@ -105,7 +105,7 @@ jobs:
           IVM_THREAD: "${{ inputs.metal_single == '1' && 'single' || 'multi' }}"
           IVM_METAL_ALLOW_MTTCG: "${{ inputs.metal_single == 'mttcg' && '1' || '0' }}"
           IVM_METAL_RUNTIME_DEVICE: "${{ inputs.metal_single == 'mttcg' && 'auto' || 'cpu' }}"
-          IVM_METAL_CAMERA_FACTORY_EXPERIMENT: "${{ inputs.metal_single == 'mttcg' && '1' || '0' }}"
+          IVM_METAL_CAMERA_FACTORY_EXPERIMENT: '0'
           IVM_METAL_QUIET: '0'
           IVM_METAL_LIBRARY_PROBE: "${{ inputs.library_probe }}"
           IVM_METAL_LIVE_LIBRARY: "${{ (inputs.live_library == 'probe' || inputs.live_library == 'special' || inputs.live_library == 'special-gated' || inputs.live_library == 'runtime-gated' || (inputs.live_library == 'runtime-guest-gated' || (inputs.live_library == 'runtime-surface-gated' || inputs.live_library == 'runtime-present-gated'))) && '1' || inputs.live_library }}"
