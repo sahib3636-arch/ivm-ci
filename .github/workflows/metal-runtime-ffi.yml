@@ -34,6 +34,7 @@ jobs:
           printf '%s\n' '/Cargo.toml' '/rust-toolchain.toml' '/README.md' '/crates/metal2vulkan/Cargo.toml' '/crates/metal2vulkan/build.rs' '/crates/metal2vulkan/build_support.rs' '/crates/metal2vulkan/src/' '/crates/metal2vulkan-air/Cargo.toml' '/crates/metal2vulkan-air/src/' '/crates/metal2vulkan-devtools/Cargo.toml' '/crates/metal2vulkan-devtools/src/' '/crates/metal2vulkan-runtime/Cargo.toml' '/crates/metal2vulkan-runtime/src/' | git sparse-checkout set --no-cone --stdin
           git checkout --detach 219f01365dc4c8eb346816c405b5b17403793764
           cp -a ../ivm-repo/ivm/lab/metal_ffi crates/ivm_metal_ffi
+          python3 ../ivm-repo/ivm/lab/metal_ffi/patch_m2v_air.py .
           cp ../ivm-repo/ivm/lab/metal_ffi_runtime/runtime_ext.rs crates/ivm_metal_ffi/src/runtime_ext.rs
           printf '\nmod runtime_ext;\n' >> crates/ivm_metal_ffi/src/lib.rs
           printf '\nmetal2vulkan-runtime = { path = "../metal2vulkan-runtime" }\n' >> crates/ivm_metal_ffi/Cargo.toml
