@@ -66,8 +66,8 @@ jobs:
       - name: Create real CPU Vulkan pipeline with synthetic shader constants
         run: |
           set -euo pipefail
-          IN=$(find "$GITHUB_WORKSPACE/system-shaders" -maxdepth 1 -name '*PhotosUICore*.metallib' -type f | head -1)
-          if [ -z "$IN" ]; then IN=$(find "$GITHUB_WORKSPACE/system-shaders" -maxdepth 1 -name '*.metallib' -type f | head -1); fi
+          IN=$(grep -rl 'vertex_main' "$GITHUB_WORKSPACE/system-shaders" --include='*.metallib' | head -1 || true)
+          if [ -z "$IN" ]; then IN=$(find "$GITHUB_WORKSPACE/system-shaders" -maxdepth 1 -name '*.metallib' -type f | sort | tail -1); fi
           test -n "$IN"
           ICD=$(find /usr/share/vulkan/icd.d -iname '*lvp*json' -type f | head -1); test -n "$ICD"
           sudo unshare -n -- env VK_ICD_FILENAMES="$ICD" VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation timeout 180 "$GITHUB_WORKSPACE/test_qemu_runtime_plugin" "$GITHUB_WORKSPACE/runtime-plugin/libivm_metal_ffi.so" 2>&1 | tee mirror-selector.log
