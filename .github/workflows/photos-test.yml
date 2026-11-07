@@ -97,7 +97,7 @@ jobs:
           RAM_GREP: '1'   # s44: grep guest RAM for IMG_/DCIM/Photos.sqlite after the shots
           # s42: phone-identical camera/Photos env (Inferno.kt PHOTO_USET + UTRACE). Without IVM_USET the shutter
           # never writes a photo (isp60: Camera asks for HEVC -> no still) and Photos has no thumbnails.
-          IVM_USET: "${{ inputs.ivm_uset != '' && inputs.ivm_uset || '18bcf9b64:8=0,1c2918af0:0=1,1a8073be0:0=0,18c250eb0:0=1,18b9c08a4:8=1,18c25454c:1=3000000,19d2638d8:0=0/2,19d261b2c:32=19d261b34/23,19cd2f024:32=19cd2f028/20,181e15ddc:33=1,1a1116a9c:33=1,1b7a7822c:33=1,184742c28:32=184742c5c' }}"
+          IVM_USET: "${{ inputs.ivm_uset != '' && inputs.ivm_uset || '18bcf9b64:8=0,1c2918af0:0=1,1a8073be0:0=0,18c250eb0:0=1,18b9c08a4:8=1,18c25454c:1=3000000,19d2638d8:0=0/2,19d261b2c:32=19d261b34/23,19cd2f024:32=19cd2f028/20,181e15ddc:33=1,1a1116a9c:33=1,1b7a7822c:33=1,184741c14:33=1' }}"
           IVM_UTRACE: "${{ inputs.utrace_extra && format('1801953f0,{0}', inputs.utrace_extra) || '1801953f0' }}"
           IVM_METAL_CI_DISCOVERY: "${{ inputs.binaddrs == 'ci-discovery' && '1' || '0' }}"
           IVM_SENT_RET: ''
@@ -191,7 +191,6 @@ jobs:
             sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq mesa-vulkan-drivers vulkan-validationlayers vulkan-tools
             export VK_ICD_FILENAMES="$(find /usr/share/vulkan/icd.d -iname '*lvp*json' -type f | head -1)"
             test -n "$VK_ICD_FILENAMES"
-            export LP_NUM_THREADS=2
             export VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation
             # Fail before the slow guest boot if a CPU Vulkan device is missing.
             # A successful CI workflow alone never proves Photos rendering.
