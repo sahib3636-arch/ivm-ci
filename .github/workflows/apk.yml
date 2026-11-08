@@ -26,15 +26,16 @@ concurrency:
 env:
   APP: ivm-repo/ivm/lab/m6/apk/ivm-app
   SRC: sahib3636-arch/ivm
-  # s45/E111-E113 engine: base 6541861f + the 40 champion patches + kexit/cntfast/nohardening/
-  # tlbsz10/cpregcache (E111) + panelwh (E112) + shmfb (E113). Keep in one place; the cache key
-  # below does not hash this line, so changing it must be paired with a key change.
+  # s46 engine: base 6541861f + 53 s45 patches + 11 verified s46 perf/stability patches
+  # (rcu-idle-park, dart-noreplay, boot-stability, tlb-ldp-fast, tlb-accounting-dirty,
+  # jc-preserve, gxf-sprr-fast, msr-fast2, native-fp, native-int, ras).
   DEFAULT_PATCHES: >-
     panelhz android-perf fpslog hle-bilerp hle-nn inljc jcttbr0 fpixc fpixc_host fpzero fpden
     nobti jcbits14 asidlog cflagsinline jclog gxfinline zvainline adpdirty tlbrange vtlb16
     a13-ipi-replay haltpoll jcshared hle-lb hle-r3 hle-sob hle-zva hle-bq tbfollow tbfollow2
     tbfollow3 tbfollow4 zdiscard jitdiscard tbarray ucdyn adpf-honest ispstub ktrace metal-bridge-link monitor-watch-cleanup teardown-fastexit
     kexit cntfast nohardening tlbsz10 cpregcache panelwh shmfb paneladapt usb-ncm-net shmaudio
+    rcu-idle-park dart-noreplay boot-stability tlb-ldp-fast tlb-accounting-dirty jc-preserve gxf-sprr-fast msr-fast2 native-fp native-int ras
 jobs:
   native:
     runs-on: ubuntu-24.04
@@ -53,7 +54,7 @@ jobs:
           # workflow, so changing DEFAULT_PATCHES kept the old engine too. Hash the lot.
           # 'custom' keeps a one-off patch list (inputs.patches) out of the default key: an engine built
           # for an experiment must never be the engine a normal build restores.
-          key: android-native-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/**', 'ivm-repo/ivm/lab/metal_cpu/**', 'ivm-repo/ivm/lab/metal_ffi/**', 'ivm-repo/ivm/lab/metal_ffi_runtime/**', '.github/workflows/apk.yml') }}-${{ inputs.patches != '' && 'custom' || 'default' }}
+          key: android-native-s46-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/**', 'ivm-repo/ivm/lab/metal_cpu/**', 'ivm-repo/ivm/lab/metal_ffi/**', 'ivm-repo/ivm/lab/metal_ffi_runtime/**', '.github/workflows/apk.yml') }}-${{ inputs.patches != '' && 'custom' || 'default' }}
       - name: host packages
         if: steps.cache.outputs.cache-hit != 'true'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build patchelf python3-venv pkg-config cmake gcc && pipx install meson==1.7.0
@@ -150,7 +151,7 @@ jobs:
           # workflow, so changing DEFAULT_PATCHES kept the old engine too. Hash the lot.
           # 'custom' keeps a one-off patch list (inputs.patches) out of the default key: an engine built
           # for an experiment must never be the engine a normal build restores.
-          key: android-native-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/**', 'ivm-repo/ivm/lab/metal_cpu/**', 'ivm-repo/ivm/lab/metal_ffi/**', 'ivm-repo/ivm/lab/metal_ffi_runtime/**', '.github/workflows/apk.yml') }}-${{ inputs.patches != '' && 'custom' || 'default' }}
+          key: android-native-s46-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/**', 'ivm-repo/ivm/lab/metal_cpu/**', 'ivm-repo/ivm/lab/metal_ffi/**', 'ivm-repo/ivm/lab/metal_ffi_runtime/**', '.github/workflows/apk.yml') }}-${{ inputs.patches != '' && 'custom' || 'default' }}
           fail-on-cache-miss: true
       - name: stage engines
         run: |
