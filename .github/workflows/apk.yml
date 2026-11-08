@@ -152,7 +152,7 @@ jobs:
           # workflow, so changing DEFAULT_PATCHES kept the old engine too. Hash the lot.
           # 'custom' keeps a one-off patch list (inputs.patches) out of the default key: an engine built
           # for an experiment must never be the engine a normal build restores.
-          key: android-native-s46-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/**', 'ivm-repo/ivm/lab/metal_cpu/**', 'ivm-repo/ivm/lab/metal_ffi/**', 'ivm-repo/ivm/lab/metal_ffi_runtime/**', '.github/workflows/apk.yml') }}-${{ inputs.patches != '' && 'custom' || 'default' }}
+          key: android-native-s47-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/**', 'ivm-repo/ivm/lab/metal_cpu/**', 'ivm-repo/ivm/lab/metal_ffi/**', 'ivm-repo/ivm/lab/metal_ffi_runtime/**', '.github/workflows/apk.yml') }}-${{ inputs.patches != '' && 'custom' || 'default' }}
           fail-on-cache-miss: true
       - name: stage engines
         run: |
