@@ -143,6 +143,7 @@ jobs:
       # The engine comes from the actions cache (the key the native job saved), not from an
       # artifact: artifact storage is quota-limited and a quota miss must not break the APK.
       - uses: actions/cache/restore@v4
+        id: engine-cache
         with:
           path: ivm-repo/work/out
           # Every engine source must be in the key. The old key hashed a hand-picked list that left
@@ -153,7 +154,21 @@ jobs:
           # 'custom' keeps a one-off patch list (inputs.patches) out of the default key: an engine built
           # for an experiment must never be the engine a normal build restores.
           key: android-native-s47-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/**', 'ivm-repo/ivm/lab/metal_cpu/**', 'ivm-repo/ivm/lab/metal_ffi/**', 'ivm-repo/ivm/lab/metal_ffi_runtime/**', '.github/workflows/apk.yml') }}-${{ inputs.patches != '' && 'custom' || 'default' }}
-          fail-on-cache-miss: true
+          # s48: the native job saves its cache in a post step, i.e. after it has built. Any file the
+          # build writes inside a hashed path changes the save key, so the apk job (which hashes a
+          # pristine tree before building) can legitimately miss it — run 42689102750 died that way.
+          # A release build must not depend on that: fall back to this run's native artifact.
+          fail-on-cache-miss: false
+      - name: engine from this run's native artifact (cache miss only)
+        if: steps.engine-cache.outputs.cache-hit != 'true'
+        uses: actions/download-artifact@v4
+        with: { name: ivm-native, path: ivm-repo/work/out }
+      - name: engine present
+        run: |
+          set -e
+          ls -la ivm-repo/work/out/jniLibs/arm64-v8a
+          test -f ivm-repo/work/out/jniLibs/arm64-v8a/libinferno.so
+          test -f ivm-repo/work/out/jniLibs/arm64-v8a/libivm_metal_ffi.so
       - name: stage engines
         run: |
           M=$APP/app/src/main; J=$M/jniLibs/arm64-v8a; mkdir -p $J $M/assets
