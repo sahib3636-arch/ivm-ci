@@ -27,6 +27,10 @@ on:
       oslog_n: { description: 'IVM_OSLOG_N cap', default: '60000' }
       utrace_extra: { description: 'extra unslid VAs appended to IVM_UTRACE (abort/assert/terminate hooks)', default: '' }
       binaddrs: { description: 'comma-separated unslid dsc addresses, or ci-discovery for unsafe CoreImage gate experiment', default: '' }
+      cam_editcam: { description: "1 = Edit tap from the Camera viewer even in the gated fixture (s48: the phone action), default '' = skip", default: '' }
+      editor_filter: { description: '1 = open the editor filter strip and tap filter thumbnails (s48)', default: '0' }
+      editor_adjust: { description: '1 = open Adjust and drag slider rows (s48)', default: '0' }
+      compute_trace: { description: '1 = per-dispatch compute state + per-surface writeback hash (s48)', default: '0' }
 permissions: { actions: read, contents: read }
 jobs:
   test:
@@ -88,9 +92,12 @@ jobs:
           CC_OVERRIDE: '${{ inputs.cc }}'
           IVM_MESON: "${{ inputs.meson == '1' && '1' || '' }}"
           IVM_NRN_SAFE: '1'
-          # Skip unverified Camera-viewer Edit taps in the gated grid fixture.
-          CAM_EDITCAM: "${{ inputs.live_library != 'runtime-present-gated' && '1' || '' }}"
+          # Skip unverified Camera-viewer Edit taps in the gated grid fixture unless explicitly
+          # requested (s48: the gated run must exercise the exact phone action: Edit -> filter/slider).
+          CAM_EDITCAM: "${{ inputs.live_library != 'runtime-present-gated' && '1' || inputs.cam_editcam }}"
           CAM_EDITOR: '1'
+          CAM_EDITOR_FILTER: "${{ inputs.editor_filter == '1' && '1' || '' }}"
+          CAM_EDITOR_ADJUST: "${{ inputs.editor_adjust == '1' && '1' || '' }}"
           # Candidate-only OCR guard: screenshots remain unverified; no save is attempted.
           CAM_EDITOR_EXPLORE: "${{ inputs.live_library == 'runtime-present-gated' && '1' || '' }}"
           PHOTOS_WAIT: '90'   # s44: wait for ingestion before the icon launch
@@ -139,6 +146,9 @@ jobs:
           IVM_METAL_BUFFER_PROBE: "${{ (inputs.buffer_probe == '1' || inputs.buffer_probe == 'both') && '1' || '0' }}"
           IVM_MARGS: "${{ (inputs.buffer_probe == 'args' || inputs.buffer_probe == 'both') && '1' || '0' }}"
           IVM_OSLOG: "${{ inputs.oslog }}"
+          # s48: names the pipeline/textures behind every compute dispatch and hashes each
+          # surface writeback, which separates 'compute wrote nothing' from 'writeback dropped it'.
+          IVM_METAL_COMPUTE_TRACE: "${{ inputs.compute_trace == '1' && '1' || '' }}"
           IVM_OSLOG_N: "${{ inputs.oslog_n || '60000' }}"
         run: |
           set -uxo pipefail
@@ -163,7 +173,7 @@ jobs:
           which bash zstd tar jq || echo "Missing commands!"
 
           sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y build-essential git curl ca-certificates jq zstd python3 python3-venv ninja-build clang-18 pkg-config libglib2.0-dev libpixman-1-dev libslirp-dev libzstd-dev libpng-dev libjpeg-dev nettle-dev libgmp-dev liblzfse-dev libtasn1-6-dev zlib1g-dev liblz4-dev cmake procps iproute2 python3-fsapfs
-          if [ -n "$CAM_EDITOR_EXPLORE" ]; then
+          if [ -n "$CAM_EDITOR_EXPLORE" ] || [ "$CAM_EDITOR_FILTER" = 1 ] || [ "$CAM_EDITOR_ADJUST" = 1 ]; then
             sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tesseract-ocr tesseract-ocr-eng
           fi
           # Inferno's meson.build hard-requires nettle >=3.10 (meson.build:1758) when --enable-nettle;
