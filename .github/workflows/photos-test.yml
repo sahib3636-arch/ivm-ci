@@ -95,6 +95,9 @@ jobs:
           # s48: drive the same controls the phone user drives, and score every step.
           CAM_EDITOR_FILTER: "${{ (contains(inputs.editor_probe, 'filter') || contains(inputs.editor_probe, 'full')) && '1' || '' }}"
           CAM_EDITOR_ADJUST: "${{ (contains(inputs.editor_probe, 'adjust') || contains(inputs.editor_probe, 'full')) && '1' || '' }}"
+          # The Camera-viewer probe only makes sense when the viewer is still on screen; photos-test
+          # 42691796840 showed it tapping the home screen instead. Opt in with "cam" in editor_probe.
+          CAM_EDITPROBE_CAM: "${{ contains(inputs.editor_probe, 'cam') && '1' || '' }}"
           # Candidate-only OCR guard: screenshots remain unverified; no save is attempted.
           CAM_EDITOR_EXPLORE: "${{ inputs.live_library == 'runtime-present-gated' && '1' || '' }}"
           PHOTOS_WAIT: '90'   # s44: wait for ingestion before the icon launch
