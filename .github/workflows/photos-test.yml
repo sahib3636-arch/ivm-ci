@@ -26,7 +26,7 @@ on:
       oslog: { description: 'IVM_OSLOG: unslid _os_log_impl VA (libsystem_trace 180055c88) to print every guest os_log, optionally "<VA>:<cap>"', default: '' }
       utrace_extra: { description: 'extra unslid VAs appended to IVM_UTRACE (abort/assert/terminate hooks)', default: '' }
       binaddrs: { description: 'comma-separated unslid dsc addresses, or ci-discovery for unsafe CoreImage gate experiment', default: '' }
-      editor_probe: { description: "s48 editor reproduction: '' off | editcam (Camera-viewer Edit tap) | cam (probe right after that tap) | filter | adjust | full (=filter+adjust) | trace (add IVM_METAL_COMPUTE_TRACE=1)", default: '' }
+      editor_probe: { description: "s48 editor reproduction: '' off | editcam (Camera-viewer Edit tap) | cam (probe right after that tap) | filter | adjust | full (=filter+adjust) | trace (add IVM_METAL_COMPUTE_TRACE=1) | wb (add the cheap writeback trace)", default: '' }
 permissions: { actions: read, contents: read }
 jobs:
   test:
@@ -158,6 +158,9 @@ jobs:
           # and the editor with the trace off, every trace-on run stayed on the home screen. Make it
           # its own token so the filter/adjust probe can run untraced.
           IVM_METAL_COMPUTE_TRACE: "${{ contains(inputs.editor_probe, 'trace') && '1' || '' }}"
+          # s48: cheap (a few lines per command) writeback trace, safe to leave on while the guest
+          # drives the UI, unlike the per-dispatch compute trace.
+          IVM_METAL_WRITEBACK_TRACE: "${{ contains(inputs.editor_probe, 'wb') && '1' || '' }}"
           # IVM_OSLOG_N now rides on IVM_OSLOG ("<VA>:<cap>"), see the run step below."
         run: |
           set -uxo pipefail
