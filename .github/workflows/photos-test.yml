@@ -26,7 +26,7 @@ on:
       oslog: { description: 'IVM_OSLOG: unslid _os_log_impl VA (libsystem_trace 180055c88) to print every guest os_log, optionally "<VA>:<cap>"', default: '' }
       utrace_extra: { description: 'extra unslid VAs appended to IVM_UTRACE (abort/assert/terminate hooks)', default: '' }
       binaddrs: { description: 'comma-separated unslid dsc addresses, or ci-discovery for unsafe CoreImage gate experiment', default: '' }
-      editor_probe: { description: "s48 editor reproduction: '' off | editcam (Camera-viewer Edit tap) | cam (probe right after that tap) | filter | adjust | full (=filter+adjust) | trace (add IVM_METAL_COMPUTE_TRACE=1) | wb (add the cheap writeback trace)", default: '' }
+      editor_probe: { description: "s48 editor reproduction: '' off | editcam (Camera-viewer Edit tap) | cam (probe right after that tap) | filter | adjust | full (=filter+adjust) | commit (tap Done and screenshot the detail view - the step the phone blanks on) | trace (add IVM_METAL_COMPUTE_TRACE=1) | wb (add the cheap writeback trace)", default: '' }
 permissions: { actions: read, contents: read }
 jobs:
   test:
@@ -100,6 +100,9 @@ jobs:
           # s48: drive the same controls the phone user drives, and score every step.
           CAM_EDITOR_FILTER: "${{ (contains(inputs.editor_probe, 'filter') || contains(inputs.editor_probe, 'full')) && '1' || '' }}"
           CAM_EDITOR_ADJUST: "${{ (contains(inputs.editor_probe, 'adjust') || contains(inputs.editor_probe, 'full')) && '1' || '' }}"
+          # s48: tap Done and score the photo detail view that comes back - that hand-off is where
+          # the phone shows a blank photo, and no earlier probe ever committed an edit.
+          CAM_EDITOR_COMMIT: "${{ contains(inputs.editor_probe, 'commit') && '1' || '' }}"
           # The Camera-viewer probe only makes sense when the viewer is still on screen; photos-test
           # 42691796840 showed it tapping the home screen instead. Opt in with "cam" in editor_probe.
           CAM_EDITPROBE_CAM: "${{ contains(inputs.editor_probe, 'cam') && '1' || '' }}"
