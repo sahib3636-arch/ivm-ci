@@ -19,7 +19,7 @@ on:
       version_name: { description: 'versionName', default: '4.0.82' }
       version_code: { description: 'versionCode (must exceed the installed one)', default: '227' }
       patches:  { description: 'IVM_PATCHES override (empty = the list below)', default: '' }
-permissions: { contents: read }
+permissions: { contents: write }   # the public copy of the APK lives on a release in THIS repo
 concurrency:
   group: apk-${{ github.ref }}-${{ inputs.version_name }}
   cancel-in-progress: false
@@ -113,7 +113,7 @@ jobs:
         with: { gradle-version: '8.14.3' }
       - name: JVM unit tests
         working-directory: ${{ env.APP }}
-        run: gradle --no-daemon -Dorg.gradle.jvmargs=-Xmx3g :app:testDebugUnitTest --tests 'dev.ivm.emu.InfernoPlanTest' --tests 'dev.ivm.emu.BootPlanTest' --tests 'dev.ivm.emu.KeymapTest' --tests 'dev.ivm.emu.ShmFbTest' --tests 'dev.ivm.emu.ShmAudioTest' --tests 'dev.ivm.emu.UsbMuxPairerTest' --tests 'dev.ivm.emu.InfernoStorageNetTest' --tests 'dev.ivm.emu.VncReconnectTest' --tests 'dev.ivm.emu.CamFeedTest' --tests 'dev.ivm.emu.PerfCoresTest'
+        run: gradle --no-daemon -Dorg.gradle.jvmargs=-Xmx3g :app:testDebugUnitTest --tests 'dev.ivm.emu.InfernoPlanTest' --tests 'dev.ivm.emu.BootPlanTest' --tests 'dev.ivm.emu.KeymapTest' --tests 'dev.ivm.emu.ShmFbTest' --tests 'dev.ivm.emu.ShmAudioTest' --tests 'dev.ivm.emu.UsbMuxPairerTest' --tests 'dev.ivm.emu.InfernoStorageNetTest' --tests 'dev.ivm.emu.VncReconnectTest' --tests 'dev.ivm.emu.CamFeedTest' --tests 'dev.ivm.emu.PerfCoresTest' --tests 'dev.ivm.emu.LogExportTest'
       - name: import tests on ART (API 34 x86_64, R8-minified artTest build)
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -220,7 +220,7 @@ jobs:
           # not explain (the uploaded bytes were verified). Also attach the APK to the release, so
           # there is a direct download whose bytes can be checked with `sha256sum`.
           SHA=$(sha256sum "$APK" | cut -d' ' -f1)
-          REL_ASSET="https://github.com/$SRC/releases/download/ivm-apk-latest/$(basename $APK)"
+          REL_ASSET="https://github.com/${{ github.repository }}/releases/download/apk-latest/$(basename $APK)"
           BODY="$(basename $APK) | $SZ B | md5 $MD5 | sha256 $SHA | $LINK | direct: $REL_ASSET | ivm $IVM_SHA (${{ inputs.ivm_ref }}) | apk run ${{ github.run_id }}"
           echo "$BODY" | tee -a $GITHUB_STEP_SUMMARY
           H=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json")
@@ -232,3 +232,16 @@ jobs:
           [ -z "$OLD" ] || curl -s "${H[@]}" -X DELETE "https://api.github.com/repos/$SRC/releases/assets/$OLD"
           curl -s -X POST "${H[@]}" -H "Content-Type: application/vnd.android.package-archive" --data-binary @"$APK" "$UP" | head -c 200; echo
           jq -n --arg b "$BODY" '{body:$b}' | curl -s "${H[@]}" -X PATCH https://api.github.com/repos/$SRC/releases/$id -d @- >/dev/null
+          # s48: the install happens on a phone, and an asset on the private repo needs a GitHub login
+          # in a mobile browser. The same APK is also published on this (public) repo, so the direct
+          # link works in any browser, with no account and no Gofile in between.
+          PH=(-H "Authorization: Bearer ${{ github.token }}" -H "Accept: application/vnd.github+json")
+          PUB=https://api.github.com/repos/${{ github.repository }}/releases
+          PID=$(curl -s "${PH[@]}" "$PUB/tags/apk-latest" | jq -r '.id // empty')
+          [ -n "$PID" ] || PID=$(curl -s "${PH[@]}" -X POST "$PUB" \
+              -d '{"tag_name":"apk-latest","name":"iVM APK (latest)","prerelease":true,"body":"-"}' | jq -r .id)
+          jq -n --arg b "$BODY" '{body:$b}' | curl -s "${PH[@]}" -X PATCH "$PUB/$PID" -d @- >/dev/null
+          OLDID=$(curl -s "${PH[@]}" "$PUB/$PID/assets" | jq -r '.[] | select(.name=="'"$(basename $APK)"'") | .id')
+          [ -z "$OLDID" ] || curl -s "${PH[@]}" -X DELETE "$PUB/$PID/assets/$OLDID"
+          curl -s -X POST "${PH[@]}" -H "Content-Type: application/vnd.android.package-archive" \
+              --data-binary @"$APK" "https://uploads.github.com/repos/${{ github.repository }}/releases/$PID/assets?name=$(basename $APK)" | head -c 200; echo
