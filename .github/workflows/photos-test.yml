@@ -26,7 +26,7 @@ on:
       oslog: { description: 'IVM_OSLOG: unslid _os_log_impl VA (libsystem_trace 180055c88) to print every guest os_log, optionally "<VA>:<cap>"', default: '' }
       utrace_extra: { description: 'extra unslid VAs appended to IVM_UTRACE (abort/assert/terminate hooks)', default: '' }
       binaddrs: { description: 'comma-separated unslid dsc addresses, or ci-discovery for unsafe CoreImage gate experiment', default: '' }
-      editor_probe: { description: "s48 editor reproduction: '' off | edit (Edit tap in the gated fixture) | filter | adjust | full; also turns on IVM_METAL_COMPUTE_TRACE", default: '' }
+      editor_probe: { description: "s48 editor reproduction: '' off | editcam (Camera-viewer Edit tap) | cam (probe right after the Camera-viewer Edit) | filter | adjust | full (=filter+adjust); any non-empty value also turns on IVM_METAL_COMPUTE_TRACE", default: '' }
 permissions: { actions: read, contents: read }
 jobs:
   test:
@@ -90,7 +90,12 @@ jobs:
           IVM_NRN_SAFE: '1'
           # Skip unverified Camera-viewer Edit taps in the gated grid fixture unless explicitly
           # requested (s48: the gated run must exercise the exact phone action: Edit -> filter/slider).
-          CAM_EDITCAM: "${{ inputs.live_library != 'runtime-present-gated' && '1' || (contains(inputs.editor_probe, 'edit') || contains(inputs.editor_probe, 'full')) && '1' || '' }}"
+          # s48: the Camera-viewer Edit tap is its own experiment. It leaves Photos dead on the
+          # s47 build (9-editcam-6s.png is the home screen), and then the later Photos icon tap
+          # launches nothing, which is exactly the difference between the grid-reaching s47 run
+          # 42502348224 (CAM_EDITCAM empty) and the home-screen-only runs after it. Ask for it
+          # with "editcam", and only add "cam" when the probe should run on the Camera viewer.
+          CAM_EDITCAM: "${{ inputs.live_library != 'runtime-present-gated' && '1' || (contains(inputs.editor_probe, 'editcam') || contains(inputs.editor_probe, 'cam')) && '1' || '' }}"
           CAM_EDITOR: '1'
           # s48: drive the same controls the phone user drives, and score every step.
           CAM_EDITOR_FILTER: "${{ (contains(inputs.editor_probe, 'filter') || contains(inputs.editor_probe, 'full')) && '1' || '' }}"
