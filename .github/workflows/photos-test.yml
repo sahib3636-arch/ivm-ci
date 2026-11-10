@@ -181,8 +181,17 @@ jobs:
         run: |
           set -uxo pipefail
           # s48: the os_log cap moved into IVM_OSLOG ("<VA>:<cap>") to stay under GitHub's 25-input cap.
+          # IVM_OSLOG="<unslid VA>:<cap>[:<after seconds>]" - the optional third field spends the
+          # whole os_log budget inside a window (s48: the editor, where NeutrinoCore aborts).
           if [ -n "${IVM_OSLOG:-}" ] && [ "${IVM_OSLOG#*:}" != "$IVM_OSLOG" ]; then
-            IVM_OSLOG_N="${IVM_OSLOG##*:}"; IVM_OSLOG="${IVM_OSLOG%%:*}"; export IVM_OSLOG IVM_OSLOG_N
+            _rest="${IVM_OSLOG#*:}"; IVM_OSLOG="${IVM_OSLOG%%:*}"
+            if [ "${_rest#*:}" != "$_rest" ]; then
+              IVM_OSLOG_AFTER="${_rest#*:}"; IVM_OSLOG_N="${_rest%%:*}"
+            else
+              IVM_OSLOG_N="$_rest"
+            fi
+            export IVM_OSLOG IVM_OSLOG_N IVM_OSLOG_AFTER
+            echo "oslog: va=$IVM_OSLOG cap=$IVM_OSLOG_N after=${IVM_OSLOG_AFTER:-0}s"
           fi
           R=$GITHUB_WORKSPACE; O=$R/bench-out; mkdir -p "$O" /opt/b /opt/vm
           # Refuse misleading diagnostics when bridge-backed modes are enabled
