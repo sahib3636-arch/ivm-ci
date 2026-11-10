@@ -192,12 +192,14 @@ jobs:
           unzip -l "$N" | grep -E 'lib/arm64-v8a/(libinferno|libivm_metal_ffi|libivm_vk_probe|libzstd-jni|libglib)'
           test "$(unzip -l "$N" | grep -Ec 'lib/arm64-v8a/(libinferno|libivm_metal_ffi|libivm_vk_probe)\.so')" -eq 3
           $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner verify --verbose --print-certs "$N" > /tmp/apksig.txt
-          head -6 /tmp/apksig.txt
+          head -20 /tmp/apksig.txt | grep -v "^$"
           grep -q "v3 scheme.*true" /tmp/apksig.txt || { echo "APK is NOT signed with v3 scheme"; exit 1; }
           # s48: the signing key must never drift - an APK signed with any other key cannot be
           # installed over the copy already on the phone ("App not installed"), and the only cure
           # is an uninstall that destroys the imported 5 GB disk set. Pin the certificate.
-          SIGNER=$(grep -m1 "Signer #1 certificate SHA-256 digest:" /tmp/apksig.txt | awk '{print $NF}')
+          # apksigner labels this line differently across build-tools versions ("Signer #1 ..." vs
+          # "Signer (minSdkVersion=24, maxSdkVersion=33) ..."), so match on the suffix only.
+          SIGNER=$(grep -m1 -i "certificate SHA-256 digest" /tmp/apksig.txt | awk '{print $NF}' | tr -d ' \r')
           echo "signer sha256: $SIGNER"
           test "$SIGNER" = "62a1fb139f573f102cf91f5ebd75ed9732490b8fd222023cdee3b246bf93b099" || {
             echo "SIGNING KEY CHANGED - refusing to publish an APK the phone cannot update"; exit 1; }
