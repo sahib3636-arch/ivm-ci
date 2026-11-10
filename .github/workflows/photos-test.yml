@@ -163,7 +163,7 @@ jobs:
           IVM_METAL_COMPUTE_TRACE: "${{ contains(inputs.editor_probe, 'trace') && '1' || '' }}"
           # s48: 500 [mtsel] lines are spent on the Photos grid before the editor opens, so editor
           # Metal selectors never showed up in a trace. Only raised when tracing on purpose.
-          IVM_MTSEL_MAX: "${{ contains(inputs.editor_probe, 'trace') || contains(inputs.editor_probe, 'wb') ? '20000' : '' }}"
+          IVM_MTSEL_MAX: "${{ (contains(inputs.editor_probe, 'trace') || contains(inputs.editor_probe, 'wb')) && '20000' || '' }}"
           # s48: cheap (a few lines per command) writeback trace, safe to leave on while the guest
           # drives the UI, unlike the per-dispatch compute trace.
           IVM_METAL_WRITEBACK_TRACE: "${{ contains(inputs.editor_probe, 'wb') && '1' || '' }}"
