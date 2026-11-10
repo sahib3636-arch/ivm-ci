@@ -191,8 +191,16 @@ jobs:
           A=$(find $APP/app/build/outputs/apk/release -name '*.apk' | head -1); N=/tmp/iVM-${{ inputs.version_name }}.apk; cp "$A" "$N"
           unzip -l "$N" | grep -E 'lib/arm64-v8a/(libinferno|libivm_metal_ffi|libivm_vk_probe|libzstd-jni|libglib)'
           test "$(unzip -l "$N" | grep -Ec 'lib/arm64-v8a/(libinferno|libivm_metal_ffi|libivm_vk_probe)\.so')" -eq 3
-          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner verify --verbose --print-certs "$N" | tee /tmp/apksig.txt | head -6
+          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner verify --verbose --print-certs "$N" > /tmp/apksig.txt
+          head -6 /tmp/apksig.txt
           grep -q "v3 scheme.*true" /tmp/apksig.txt || { echo "APK is NOT signed with v3 scheme"; exit 1; }
+          # s48: the signing key must never drift - an APK signed with any other key cannot be
+          # installed over the copy already on the phone ("App not installed"), and the only cure
+          # is an uninstall that destroys the imported 5 GB disk set. Pin the certificate.
+          SIGNER=$(grep -m1 "Signer #1 certificate SHA-256 digest:" /tmp/apksig.txt | awk '{print $NF}')
+          echo "signer sha256: $SIGNER"
+          test "$SIGNER" = "62a1fb139f573f102cf91f5ebd75ed9732490b8fd222023cdee3b246bf93b099" || {
+            echo "SIGNING KEY CHANGED - refusing to publish an APK the phone cannot update"; exit 1; }
           echo "APK=$N" >> $GITHUB_ENV
       - uses: actions/upload-artifact@v4
         continue-on-error: true
@@ -208,9 +216,19 @@ jobs:
           R=$(curl -s -F "file=@$APK" https://upload.gofile.io/uploadfile); echo "$R" | head -c 400; echo
           LINK=$(echo "$R" | jq -r .data.downloadPage); MD5=$(md5sum "$APK" | cut -d' ' -f1); SZ=$(stat -c%s "$APK")
           [ "$(echo "$R" | jq -r .data.md5)" = "$MD5" ] || { echo "gofile md5 mismatch"; exit 1; }
-          BODY="$(basename $APK) | $SZ B | md5 $MD5 | $LINK | ivm $IVM_SHA (${{ inputs.ivm_ref }}) | apk run ${{ github.run_id }}"
+          # s48: Gofile links have produced 'App not installed' reports that the build itself does
+          # not explain (the uploaded bytes were verified). Also attach the APK to the release, so
+          # there is a direct download whose bytes can be checked with `sha256sum`.
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          REL_ASSET="https://github.com/$SRC/releases/download/ivm-apk-latest/$(basename $APK)"
+          BODY="$(basename $APK) | $SZ B | md5 $MD5 | sha256 $SHA | $LINK | direct: $REL_ASSET | ivm $IVM_SHA (${{ inputs.ivm_ref }}) | apk run ${{ github.run_id }}"
           echo "$BODY" | tee -a $GITHUB_STEP_SUMMARY
           H=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json")
           id=$(curl -s "${H[@]}" https://api.github.com/repos/$SRC/releases/tags/ivm-apk-latest | jq -r '.id // empty')
           [ -n "$id" ] || id=$(curl -s "${H[@]}" -X POST https://api.github.com/repos/$SRC/releases -d '{"tag_name":"ivm-apk-latest","name":"ivm-apk-latest","prerelease":true,"body":"-"}' | jq -r .id)
+          # Direct asset upload (clobbers the previous build's asset of the same name).
+          UP="https://uploads.github.com/repos/$SRC/releases/$id/assets?name=$(basename $APK)"
+          OLD=$(curl -s "${H[@]}" "https://api.github.com/repos/$SRC/releases/$id/assets" | jq -r '.[] | select(.name=="'"$(basename $APK)"'") | .id')
+          [ -z "$OLD" ] || curl -s "${H[@]}" -X DELETE "https://api.github.com/repos/$SRC/releases/assets/$OLD"
+          curl -s -X POST "${H[@]}" -H "Content-Type: application/vnd.android.package-archive" --data-binary @"$APK" "$UP" | head -c 200; echo
           jq -n --arg b "$BODY" '{body:$b}' | curl -s "${H[@]}" -X PATCH https://api.github.com/repos/$SRC/releases/$id -d @- >/dev/null
