@@ -153,7 +153,11 @@ jobs:
           IVM_OSLOG: "${{ inputs.oslog }}"
           # s48: names the pipeline/textures behind every compute dispatch and hashes each
           # surface writeback, which separates 'compute wrote nothing' from 'writeback dropped it'.
-          IVM_METAL_COMPUTE_TRACE: "${{ inputs.editor_probe != '' && '1' || '' }}"
+          # s48: the per-dispatch trace is loud (one formatted line per Metal dispatch) and slows
+          # the guest enough that the Photos launch misses its window: 42767388665 reached the grid
+          # and the editor with the trace off, every trace-on run stayed on the home screen. Make it
+          # its own token so the filter/adjust probe can run untraced.
+          IVM_METAL_COMPUTE_TRACE: "${{ contains(inputs.editor_probe, 'trace') && '1' || '' }}"
           # IVM_OSLOG_N now rides on IVM_OSLOG ("<VA>:<cap>"), see the run step below."
         run: |
           set -uxo pipefail
