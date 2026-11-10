@@ -10,6 +10,7 @@ on:
       cc: { description: 'gcc | clang', default: 'gcc' }
       meson: { description: '1 = phone meson option set (IVM_MESON)', default: '0' }
       cam_shot: { description: '1 = take 2 shots before Photos (library non-empty); 0 = empty library', default: '1' }
+      ram: { description: 'guest RAM (s48: the Photo Editor is memory hungry; 3G is the historical default)', default: '3G' }
       ktrace: { description: '1 = kernel data-abort trap; 2 = also BRK trap; 3 = kill trace (brk+triage+psignal+memorystatus+exit1, PCs from this kernelcache)', default: '0' }
       photos_via: { description: "'' = Photos icon/Spotlight; viewer = open Photos from the Camera thumbnail", default: '' }
       photos_launch: { description: "'' = Photos home-icon tap (E13 config, reproduces the crash); spotlight = Spotlight search", default: '' }
@@ -290,9 +291,9 @@ jobs:
             # Translator code runs offline with no credential in its environment.
             # Keep loopback for QEMU monitor/VNC, then drop root before bench.
             test -r "$IVM_METAL_FFI_PROBE_PATH" && test "$IVM_METAL_LIBRARY_PROBE" = 1 || exit 1
-            sudo --preserve-env unshare -n -- sh -c 'ip link set lo up; exec setpriv --reuid="$1" --regid="$2" --init-groups python3 -u "$3" /opt/b/eng /opt/qd "$4" "$5" photos-test 4 3G 512' sh "$(id -u)" "$(id -g)" "$R/ivm-repo/ivm/bench/bench.py" "$VMD" "$O" 2>&1 | tee $O/bench.log
+            sudo --preserve-env unshare -n -- sh -c 'ip link set lo up; exec setpriv --reuid="$1" --regid="$2" --init-groups python3 -u "$3" /opt/b/eng /opt/qd "$4" "$5" photos-test 4 ${{ inputs.ram }} 512' sh "$(id -u)" "$(id -g)" "$R/ivm-repo/ivm/bench/bench.py" "$VMD" "$O" 2>&1 | tee $O/bench.log
           else
-            CAM_PHOTOS=1 IVM_USET="$IVM_USET" python3 -u $R/ivm-repo/ivm/bench/bench.py /opt/b/eng /opt/qd "$VMD" "$O" "photos-test" "4" "3G" "512" 2>&1 | tee $O/bench.log
+            CAM_PHOTOS=1 IVM_USET="$IVM_USET" python3 -u $R/ivm-repo/ivm/bench/bench.py /opt/b/eng /opt/qd "$VMD" "$O" "photos-test" "4" "${{ inputs.ram }}" "512" 2>&1 | tee $O/bench.log
           fi
           echo "=== Photos results ==="
           grep -E "photos_grid_reached|photos_state|photos_launch_tries" $O/bench.log | tail -5
