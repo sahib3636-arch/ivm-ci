@@ -330,9 +330,10 @@ jobs:
         if: always()
         run: |
           # s48: ktrace showed ReportMemoryException firing the instant the photo detail opened and
-          # the app vanishing, but the reason is only in the guest's own crash reports. The root
-          # image (data volume) is already mounted read-write earlier in this job for the Photos DB
-          # fix, so mount it again and copy whatever the guest wrote.
+          # the app vanishing, but the reason is only in the guest's own crash reports. The data
+          # volume is mounted read-only after the run and only the report directories are copied -
+          # Apple's Analytics archives are large, compressed and useless here (and being root-owned
+          # they broke the artifact upload once already).
           D=${{ github.workspace }}/bench-out/photos-test/photos-live
           mkdir -p "$D/crashlogs"
           ROOT_IMG=$(find /opt/vm -maxdepth 3 -name root -type f 2>/dev/null | head -1)
@@ -341,14 +342,19 @@ jobs:
           LOOP=$(sudo losetup -f --show -o 24576 "$ROOT_IMG") || exit 0
           sudo mkdir -p /mnt/crash
           if sudo mount -t apfs -o vol=1,ro "$LOOP" /mnt/crash; then
-            sudo find /mnt/crash/mobile/Library/Logs -maxdepth 3 -type f \( -name '*.ips' -o -name '*.panic' -o -name '*.synced' \) -newermt '-3 hours' 2>/dev/null | head -200 | while read -r f; do
-              sudo cp "$f" "$D/crashlogs/" 2>/dev/null || true
+            for d in CrashReporter DiagnosticReports; do
+              sudo find "/mnt/crash/mobile/Library/Logs/$d" -maxdepth 2 -type f -name '*.ips' -size -2M 2>/dev/null | head -60 | while read -r f; do
+                sudo cp "$f" "$D/crashlogs/" 2>/dev/null || true
+              done
             done
-            sudo ls -la /mnt/crash/mobile/Library/Logs/CrashReporter 2>/dev/null | tail -20 || true
+            sudo ls -la /mnt/crash/mobile/Library/Logs/CrashReporter 2>/dev/null | tail -15 || true
             sudo umount /mnt/crash || true
           else echo "crash-log mount failed"; fi
           sudo losetup -d "$LOOP" || true
+          sudo chown -R "$(id -u):$(id -g)" "$D/crashlogs" || true
+          sudo chmod -R u+rw,go+r "$D/crashlogs" || true
           ls -la "$D/crashlogs" | head -30
+          for f in "$D"/crashlogs/*.ips; do [ -e "$f" ] || continue; echo "=== $f"; head -c 400 "$f"; echo; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
