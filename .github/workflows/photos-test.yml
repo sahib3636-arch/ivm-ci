@@ -26,7 +26,7 @@ on:
       oslog: { description: 'IVM_OSLOG: unslid _os_log_impl VA (libsystem_trace 180055c88) to print every guest os_log, optionally "<VA>:<cap>"', default: '' }
       utrace_extra: { description: 'extra unslid VAs appended to IVM_UTRACE (abort/assert/terminate hooks)', default: '' }
       binaddrs: { description: 'comma-separated unslid dsc addresses, or ci-discovery for unsafe CoreImage gate experiment', default: '' }
-      editor_probe: { description: "s48 editor reproduction: '' off | editcam (Camera-viewer Edit tap) | cam (probe right after the Camera-viewer Edit) | filter | adjust | full (=filter+adjust); any non-empty value also turns on IVM_METAL_COMPUTE_TRACE", default: '' }
+      editor_probe: { description: "s48 editor reproduction: '' off | editcam (Camera-viewer Edit tap) | cam (probe right after that tap) | filter | adjust | full (=filter+adjust) | trace (add IVM_METAL_COMPUTE_TRACE=1)", default: '' }
 permissions: { actions: read, contents: read }
 jobs:
   test:
