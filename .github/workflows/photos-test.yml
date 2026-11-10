@@ -326,6 +326,29 @@ jobs:
             tail -40 "$D/dump.log"; cat "$D/dump/report.txt" 2>/dev/null || true
           else echo "no root image"; fi
 
+      - name: Guest crash logs (why did Photos go away?)
+        if: always()
+        run: |
+          # s48: ktrace showed ReportMemoryException firing the instant the photo detail opened and
+          # the app vanishing, but the reason is only in the guest's own crash reports. The root
+          # image (data volume) is already mounted read-write earlier in this job for the Photos DB
+          # fix, so mount it again and copy whatever the guest wrote.
+          D=${{ github.workspace }}/bench-out/photos-test/photos-live
+          mkdir -p "$D/crashlogs"
+          ROOT_IMG=$(find /opt/vm -maxdepth 3 -name root -type f 2>/dev/null | head -1)
+          [ -n "$ROOT_IMG" ] || { echo "no root image"; exit 0; }
+          sudo insmod /tmp/apfsrw/apfs.ko 2>/dev/null || true
+          LOOP=$(sudo losetup -f --show -o 24576 "$ROOT_IMG") || exit 0
+          sudo mkdir -p /mnt/crash
+          if sudo mount -t apfs -o vol=1,ro "$LOOP" /mnt/crash; then
+            sudo find /mnt/crash/mobile/Library/Logs -maxdepth 3 -type f \( -name '*.ips' -o -name '*.panic' -o -name '*.synced' \) -newermt '-3 hours' 2>/dev/null | head -200 | while read -r f; do
+              sudo cp "$f" "$D/crashlogs/" 2>/dev/null || true
+            done
+            sudo ls -la /mnt/crash/mobile/Library/Logs/CrashReporter 2>/dev/null | tail -20 || true
+            sudo umount /mnt/crash || true
+          else echo "crash-log mount failed"; fi
+          sudo losetup -d "$LOOP" || true
+          ls -la "$D/crashlogs" | head -30
       - uses: actions/upload-artifact@v4
         if: always()
         with:
