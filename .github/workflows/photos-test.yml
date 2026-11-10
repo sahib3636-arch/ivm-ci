@@ -172,6 +172,11 @@ jobs:
           # s48: cheap (a few lines per command) writeback trace, safe to leave on while the guest
           # drives the UI, unlike the per-dispatch compute trace.
           IVM_METAL_WRITEBACK_TRACE: "${{ contains(inputs.editor_probe, 'wb') && '1' || '' }}"
+          # s48: the guest's own crash report says MobileSlideShow aborts on thread "NUDevice.GPU"
+          # inside NeutrinoCore - the photo-editing engine - so the reason is in NeutrinoCore's
+          # os_log, not in our trace. '@<hex>' is an unslid mach header resolved against the dsc
+          # slide at run time (NeutrinoCore = 0x1bb8ed000 in 18A5351d). Pair with oslog=<VA>:<cap>.
+          IVM_OSLOG_DSO: "${{ contains(inputs.editor_probe, 'nu') && '@1bb8ed000' || '' }}"
           # IVM_OSLOG_N now rides on IVM_OSLOG ("<VA>:<cap>"), see the run step below."
         run: |
           set -uxo pipefail
