@@ -130,12 +130,12 @@ jobs:
           # (Inferno.kt metalBridgeEnv), while this workflow pins the CPU device and leaves
           # discovery off. The editor aborts during NUDevice setup in CI and survives on the
           # phone, so run the phone's values behind a token: 'devauto' in editor_probe.
-          IVM_METAL_CI_DISCOVERY: "${{ (inputs.binaddrs == 'ci-discovery' || contains(inputs.editor_probe, 'devauto')) && '1' || '0' }}"
+          IVM_METAL_CI_DISCOVERY: "${{ (inputs.binaddrs == 'ci-discovery' || contains(inputs.editor_probe, 'devauto') || contains(inputs.editor_probe, 'phone')) && '1' || '0' }}"
           IVM_SENT_RET: ''
           IVM_UTRACE_BT: '1'
           IVM_THREAD: "${{ inputs.metal_single == '1' && 'single' || 'multi' }}"
           IVM_METAL_ALLOW_MTTCG: "${{ inputs.metal_single == 'mttcg' && '1' || '0' }}"
-          IVM_METAL_RUNTIME_DEVICE: "${{ contains(inputs.editor_probe, 'devauto') && 'auto' || 'cpu' }}"
+          IVM_METAL_RUNTIME_DEVICE: "${{ (contains(inputs.editor_probe, 'devauto') || contains(inputs.editor_probe, 'phone')) && 'auto' || 'cpu' }}"
           IVM_METAL_CAMERA_FACTORY_EXPERIMENT: '0'
           IVM_METAL_QUIET: '0'
           IVM_METAL_LIBRARY_PROBE: "${{ inputs.library_probe }}"
@@ -161,12 +161,12 @@ jobs:
           # copy added after 4.0.147 and the prime suspect for the crash that arrived with it.
           # Token: 'wb0' turns it off, 'wball' turns it on for every target. Empty = the engine default.
           IVM_METAL_COMMIT_WRITEBACK: "${{ contains(inputs.editor_probe, 'wb0') && '0' || (contains(inputs.editor_probe, 'wball') && 'all' || '') }}"
-          IVM_METAL_COMPLETION_EXPERIMENT: "${{ inputs.live_library == 'runtime-present-gated' && (inputs.buffer_probe == 'prefault-callback' || inputs.buffer_probe == 'prefault-retry' || inputs.buffer_probe == 'prefault-stage') || contains(inputs.editor_probe, 'cb1') && '1' || '0' }}"
-          IVM_METAL_GUEST_RETRY_EXPERIMENT: "${{ inputs.live_library == 'runtime-present-gated' && (inputs.buffer_probe == 'prefault-retry' || inputs.buffer_probe == 'prefault-stage') && '1' || '0' }}"
-          IVM_METAL_TEXTURE_STAGE_EXPERIMENT: "${{ inputs.live_library == 'runtime-present-gated' && inputs.buffer_probe == 'prefault-stage' && '1' || '0' }}"
+          IVM_METAL_COMPLETION_EXPERIMENT: "${{ (inputs.live_library == 'runtime-present-gated' && (inputs.buffer_probe == 'prefault-callback' || inputs.buffer_probe == 'prefault-retry' || inputs.buffer_probe == 'prefault-stage')) || contains(inputs.editor_probe, 'cb1') || contains(inputs.editor_probe, 'phone') && '1' || '0' }}"
+          IVM_METAL_GUEST_RETRY_EXPERIMENT: "${{ (inputs.live_library == 'runtime-present-gated' && (inputs.buffer_probe == 'prefault-retry' || inputs.buffer_probe == 'prefault-stage')) || contains(inputs.editor_probe, 'phone') && '1' || '0' }}"
+          IVM_METAL_TEXTURE_STAGE_EXPERIMENT: "${{ (inputs.live_library == 'runtime-present-gated' && inputs.buffer_probe == 'prefault-stage') || contains(inputs.editor_probe, 'phone') && '1' || '0' }}"
           IVM_METAL_COMPILE_PROBE_PROFILE: "${{ inputs.live_library == 'special-gated' && format('{0}/metal-probe-profile.json', github.workspace) || '' }}"
           IVM_METAL_FFI_PROBE_PATH: "${{ inputs.ffi_run != '' && format('{0}/metal-ffi/libivm_metal_ffi.so', github.workspace) || '' }}"
-          IVM_METAL_LIMITS_DISCOVERY: "${{ inputs.limits_discovery }}"
+          IVM_METAL_LIMITS_DISCOVERY: "${{ (inputs.limits_discovery == '1' || contains(inputs.editor_probe, 'phone')) && '1' || '0' }}"
           IVM_METAL_LIVE_TEXTURE: "${{ inputs.live_texture }}"
           IVM_METAL_LIVE_BUFFER: "${{ inputs.live_buffer }}"
           IVM_METAL_LIVE_QUEUE: "${{ inputs.live_queue }}"
