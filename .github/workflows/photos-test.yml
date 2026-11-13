@@ -26,7 +26,7 @@ on:
       oslog: { description: 'IVM_OSLOG: unslid _os_log_impl VA (libsystem_trace 180055c88) to print every guest os_log, optionally "<VA>:<cap>"', default: '' }
       utrace_extra: { description: 'extra unslid VAs appended to IVM_UTRACE (abort/assert/terminate hooks)', default: '' }
       binaddrs: { description: 'comma-separated unslid dsc addresses, or ci-discovery for unsafe CoreImage gate experiment', default: '' }
-      editor_probe: { description: "s48 editor reproduction: '' off | editcam (Camera-viewer Edit tap) | cam (probe right after that tap) | filter | adjust | full (=filter+adjust) | commit (tap Done and screenshot the detail view - the step the phone blanks on) | trace (add IVM_METAL_COMPUTE_TRACE=1) | wb (add the cheap writeback trace)", default: '' }
+      editor_probe: { description: "s48 editor reproduction (25-input cap: extra tokens ride here; 'grid' = no editor taps, two shots then the Photos grid, for a build-to-build A/B): '' off | editcam (Camera-viewer Edit tap) | cam (probe right after that tap) | filter | adjust | full (=filter+adjust) | commit (tap Done and screenshot the detail view - the step the phone blanks on) | trace (add IVM_METAL_COMPUTE_TRACE=1) | wb (add the cheap writeback trace)", default: '' }
 permissions: { actions: read, contents: read }
 jobs:
   test:
@@ -43,18 +43,30 @@ jobs:
           path: metal-ffi
           run-id: '${{ inputs.ffi_run }}'
           github-token: '${{ github.token }}'
-      - name: Optional kernel trap (s42, s43 brk)
-        if: ${{ inputs.ktrace == '1' || inputs.ktrace == '2' }}
+      - name: Optional kernel trap (s42, s43 brk, s48 kill trace)
+        if: ${{ inputs.ktrace == '1' || inputs.ktrace == '2' || inputs.ktrace == '3' }}
         run: |
           # 2 = s43: also trace _handle_breakpoint (BRK #n, EC 0x3c: Swift/PAC traps) with user pc+bt
-          if [ "${{ inputs.ktrace }}" = "2" ]; then
+          # 3 = s48 kill trace: the same PC set the APK ships (Inferno.KILL_TRACE_*), so a CI run
+          #     names the process that died and prints "[ktrace] fault pc= lr= far= esr=" for a user
+          #     fault. exception_triage (7a2c850) must stay out of _NOSS or the fault print never runs.
+          if [ "${{ inputs.ktrace }}" = "3" ]; then
+            echo "IVM_KTRACE=fffffff007b569a0,fffffff007a2c850,fffffff007e81e38,fffffff007e90054,fffffff007e658d0,fffffff007e6761c,fffffff007e658e4,fffffff007efdbc8,fffffff007e83ba8,fffffff007a643ec" >> $GITHUB_ENV
+            echo "IVM_KTRACE_NOSS=fffffff007e81e38,fffffff007e90054,fffffff007e658d0,fffffff007e6761c,fffffff007e658e4,fffffff007efdbc8,fffffff007e83ba8,fffffff007a643ec" >> $GITHUB_ENV
+            echo "IVM_KTRACE_PCOMM=fffffff007e6761c,fffffff007e81e38,fffffff007e658e4,fffffff007efdbc8" >> $GITHUB_ENV
+            echo "IVM_KTRACE_CODES=fffffff007a2c850" >> $GITHUB_ENV
+            echo "IVM_KTRACE_COMMONLY=MobileSlideShow,Photo,backboardd,SpringBoard,Camera" >> $GITHUB_ENV
+            echo "IVM_KTRACE_NOBT=1" >> $GITHUB_ENV
+            echo "IVM_KTRACE_N=1000" >> $GITHUB_ENV
+          elif [ "${{ inputs.ktrace }}" = "2" ]; then
             echo "IVM_KTRACE=fffffff007b569a0,fffffff007b57734,fffffff007b57de4" >> $GITHUB_ENV
+            echo "IVM_KTRACE_N=200" >> $GITHUB_ENV
           else
             echo "IVM_KTRACE=fffffff007b569a0,fffffff007b57734" >> $GITHUB_ENV
+            echo "IVM_KTRACE_N=200" >> $GITHUB_ENV
           fi
           echo "IVM_KTRACE_SAVE=fffffff007b569a0" >> $GITHUB_ENV
           echo "IVM_KTRACE_SS=1" >> $GITHUB_ENV
-          echo "IVM_KTRACE_N=200" >> $GITHUB_ENV
       - name: Setup and run Photos test
         env:
           IVM_PAT: '${{ secrets.IVM_PAT }}'
@@ -95,8 +107,8 @@ jobs:
           # launches nothing, which is exactly the difference between the grid-reaching s47 run
           # 42502348224 (CAM_EDITCAM empty) and the home-screen-only runs after it. Ask for it
           # with "editcam", and only add "cam" when the probe should run on the Camera viewer.
-          CAM_EDITCAM: "${{ inputs.live_library != 'runtime-present-gated' && '1' || (contains(inputs.editor_probe, 'editcam') || contains(inputs.editor_probe, 'cam')) && '1' || '' }}"
-          CAM_EDITOR: '1'
+          CAM_EDITCAM: "${{ contains(inputs.editor_probe, 'grid') && '' || (inputs.live_library != 'runtime-present-gated' && '1' || (contains(inputs.editor_probe, 'editcam') || contains(inputs.editor_probe, 'cam')) && '1' || '') }}"
+          CAM_EDITOR: "${{ contains(inputs.editor_probe, 'grid') && '' || '1' }}"
           # s48: drive the same controls the phone user drives, and score every step.
           CAM_EDITOR_FILTER: "${{ (contains(inputs.editor_probe, 'filter') || contains(inputs.editor_probe, 'full')) && '1' || '' }}"
           CAM_EDITOR_ADJUST: "${{ (contains(inputs.editor_probe, 'adjust') || contains(inputs.editor_probe, 'full')) && '1' || '' }}"
