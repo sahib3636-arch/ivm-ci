@@ -161,7 +161,7 @@ jobs:
           # copy added after 4.0.147 and the prime suspect for the crash that arrived with it.
           # Token: 'wb0' turns it off, 'wball' turns it on for every target. Empty = the engine default.
           IVM_METAL_COMMIT_WRITEBACK: "${{ contains(inputs.editor_probe, 'wb0') && '0' || (contains(inputs.editor_probe, 'wball') && 'all' || '') }}"
-          IVM_METAL_COMPLETION_EXPERIMENT: "${{ inputs.live_library == 'runtime-present-gated' && (inputs.buffer_probe == 'prefault-callback' || inputs.buffer_probe == 'prefault-retry' || inputs.buffer_probe == 'prefault-stage') && '1' || '0' }}"
+          IVM_METAL_COMPLETION_EXPERIMENT: "${{ inputs.live_library == 'runtime-present-gated' && (inputs.buffer_probe == 'prefault-callback' || inputs.buffer_probe == 'prefault-retry' || inputs.buffer_probe == 'prefault-stage') || contains(inputs.editor_probe, 'cb1') && '1' || '0' }}"
           IVM_METAL_GUEST_RETRY_EXPERIMENT: "${{ inputs.live_library == 'runtime-present-gated' && (inputs.buffer_probe == 'prefault-retry' || inputs.buffer_probe == 'prefault-stage') && '1' || '0' }}"
           IVM_METAL_TEXTURE_STAGE_EXPERIMENT: "${{ inputs.live_library == 'runtime-present-gated' && inputs.buffer_probe == 'prefault-stage' && '1' || '0' }}"
           IVM_METAL_COMPILE_PROBE_PROFILE: "${{ inputs.live_library == 'special-gated' && format('{0}/metal-probe-profile.json', github.workspace) || '' }}"
