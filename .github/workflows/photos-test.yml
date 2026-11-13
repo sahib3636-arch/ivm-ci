@@ -164,6 +164,9 @@ jobs:
           IVM_METAL_COMPLETION_EXPERIMENT: "${{ (inputs.live_library == 'runtime-present-gated' && (inputs.buffer_probe == 'prefault-callback' || inputs.buffer_probe == 'prefault-retry' || inputs.buffer_probe == 'prefault-stage')) || contains(inputs.editor_probe, 'cb1') || contains(inputs.editor_probe, 'phone') && '1' || '0' }}"
           IVM_METAL_GUEST_RETRY_EXPERIMENT: "${{ (inputs.live_library == 'runtime-present-gated' && (inputs.buffer_probe == 'prefault-retry' || inputs.buffer_probe == 'prefault-stage')) || contains(inputs.editor_probe, 'phone') && '1' || '0' }}"
           IVM_METAL_TEXTURE_STAGE_EXPERIMENT: "${{ (inputs.live_library == 'runtime-present-gated' && inputs.buffer_probe == 'prefault-stage') || contains(inputs.editor_probe, 'phone') && '1' || '0' }}"
+          # s48: 'deliver' runs the guest's addCompletedHandler: blocks at waitUntilCompleted, where
+          # Metal promises they have run. Without it no editor command ever delivers a block.
+          IVM_METAL_COMPLETION_DELIVER_WAIT: "${{ contains(inputs.editor_probe, 'deliver') && '1' || '0' }}"
           IVM_METAL_COMPILE_PROBE_PROFILE: "${{ inputs.live_library == 'special-gated' && format('{0}/metal-probe-profile.json', github.workspace) || '' }}"
           IVM_METAL_FFI_PROBE_PATH: "${{ inputs.ffi_run != '' && format('{0}/metal-ffi/libivm_metal_ffi.so', github.workspace) || '' }}"
           IVM_METAL_LIMITS_DISCOVERY: "${{ (inputs.limits_discovery == '1' || contains(inputs.editor_probe, 'phone')) && '1' || '0' }}"
