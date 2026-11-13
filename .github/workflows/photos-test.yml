@@ -157,6 +157,10 @@ jobs:
           IVM_METAL_GUEST_SURFACE_LIVE: "${{ inputs.live_library == 'runtime-present-gated' && '1' || '0' }}"
           # Unsafe research only: guest memmove may fault or crash; never enabled implicitly.
           IVM_METAL_SURFACE_PREFAULT: "${{ inputs.live_library == 'runtime-present-gated' && (inputs.buffer_probe == 'prefault' || inputs.buffer_probe == 'prefault-callback' || inputs.buffer_probe == 'prefault-retry' || inputs.buffer_probe == 'prefault-stage') && '1' || '0' }}"
+          # s48: the commit writeback ("auto" = compute targets only) is the one host->guest pixel
+          # copy added after 4.0.147 and the prime suspect for the crash that arrived with it.
+          # Token: 'wb0' turns it off, 'wball' turns it on for every target. Empty = the engine default.
+          IVM_METAL_COMMIT_WRITEBACK: "${{ contains(inputs.editor_probe, 'wb0') && '0' || (contains(inputs.editor_probe, 'wball') && 'all' || '') }}"
           IVM_METAL_COMPLETION_EXPERIMENT: "${{ inputs.live_library == 'runtime-present-gated' && (inputs.buffer_probe == 'prefault-callback' || inputs.buffer_probe == 'prefault-retry' || inputs.buffer_probe == 'prefault-stage') && '1' || '0' }}"
           IVM_METAL_GUEST_RETRY_EXPERIMENT: "${{ inputs.live_library == 'runtime-present-gated' && (inputs.buffer_probe == 'prefault-retry' || inputs.buffer_probe == 'prefault-stage') && '1' || '0' }}"
           IVM_METAL_TEXTURE_STAGE_EXPERIMENT: "${{ inputs.live_library == 'runtime-present-gated' && inputs.buffer_probe == 'prefault-stage' && '1' || '0' }}"
