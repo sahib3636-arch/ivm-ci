@@ -181,6 +181,9 @@ jobs:
           # it whenever the receiver is a stale-but-nonzero value.
           IVM_METAL_TRAP_X0LT: "${{ contains(inputs.editor_probe, 'nilsmall') && '1000' || '0' }}"
           IVM_METAL_TRAP_N: "4000"
+          # s48 4.0.172: answer -limits at PhotosUICore's call site even when the receiver is not
+          # the device stub. 'lany0' is the A/B switch (same build, one env value).
+          IVM_METAL_LIMITS_ANY: "${{ contains(inputs.editor_probe, 'lany0') && '0' || '1' }}"
           IVM_METAL_COMPLETION_DELIVER_WAIT: "${{ contains(inputs.editor_probe, 'deliver') && '1' || '0' }}"
           IVM_METAL_COMPILE_PROBE_PROFILE: "${{ inputs.live_library == 'special-gated' && format('{0}/metal-probe-profile.json', github.workspace) || '' }}"
           IVM_METAL_FFI_PROBE_PATH: "${{ inputs.ffi_run != '' && format('{0}/metal-ffi/libivm_metal_ffi.so', github.workspace) || '' }}"
