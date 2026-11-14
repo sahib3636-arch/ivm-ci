@@ -413,6 +413,29 @@ jobs:
           sudo chmod -R u+rw,go+r "$D/crashlogs" || true
           ls -la "$D/crashlogs" | head -30
           for f in "$D"/crashlogs/*.ips; do [ -e "$f" ] || continue; echo "=== $f"; head -c 400 "$f"; echo; done
+      - name: CoreImage kernel-cache inventory (what the adjust renderer cannot find)
+        if: always()
+        run: |
+          # s48 4.0.174: the editor's adjust path asks the bridge for exactly one library with
+          # -newLibraryWithData: and passes an EMPTY NSData (hdr isa/info/len/bytes =
+          # {..,0,0,0}), then falls back to -newLibraryWithSource:, which no host can compile.
+          # A zero-length file is what makes -dataWithContentsOfFile: return an empty NSData, so
+          # list every CoreImage cache/kernel file with its size in both volumes.
+          D=${{ github.workspace }}/bench-out/photos-test/photos-live
+          mkdir -p "$D"
+          ROOT_IMG=$(find /opt/vm -maxdepth 3 -name root -type f 2>/dev/null | head -1)
+          [ -n "$ROOT_IMG" ] || { echo "no root image"; exit 0; }
+          python3 ${{ github.workspace }}/ivm-repo/ivm/lab/tools/ci_cache_scan.py "$ROOT_IMG" "$D" \
+            > "$D/cache-scan.log" 2>&1 || echo "cache scan failed"
+          python3 - "$D/cache-manifest.json" <<'EOF' || tail -20 "$D/cache-scan.log"
+          import json,sys
+          m=json.load(open(sys.argv[1]))
+          print("visited",m["visited"],"truncated",m["truncated"])
+          for e in sorted(m["entries"],key=lambda e:(e["vol"],e["path"])):
+              print("vol%d %9d %s%s" % (e["vol"],e["bytes"], "ZERO " if e["zero"] else "", e["path"]))
+          for e in m["missing"]: print("missing",e)
+          for e in m["errors"][:20]: print("error",e)
+          EOF
       - uses: actions/upload-artifact@v4
         if: always()
         with:
