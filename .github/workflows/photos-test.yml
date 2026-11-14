@@ -171,7 +171,9 @@ jobs:
           # registers an instruction is entered with, which names a caller that is only
           # visible through lr (a tail call into IOSurface, for instance).
           IVM_METAL_TRAP_PC: "${{ contains(inputs.editor_probe, 'trap') && inputs.binaddrs || '' }}"
-          IVM_METAL_TRAP_ZERO: "${{ contains(inputs.editor_probe, 'trap') && '1' || '0' }}"
+          # 'trapzero' filters to nil receivers (the ones that fault); plain 'trap' shows
+          # every arrival, which is what names a caller that is only visible through lr.
+          IVM_METAL_TRAP_ZERO: "${{ contains(inputs.editor_probe, 'trapzero') && '1' || '0' }}"
           IVM_METAL_TRAP_N: "4000"
           IVM_METAL_COMPLETION_DELIVER_WAIT: "${{ contains(inputs.editor_probe, 'deliver') && '1' || '0' }}"
           IVM_METAL_COMPILE_PROBE_PROFILE: "${{ inputs.live_library == 'special-gated' && format('{0}/metal-probe-profile.json', github.workspace) || '' }}"
