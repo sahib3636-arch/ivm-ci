@@ -220,7 +220,11 @@ jobs:
           # inside NeutrinoCore - the photo-editing engine - so the reason is in NeutrinoCore's
           # os_log, not in our trace. '@<hex>' is an unslid mach header resolved against the dsc
           # slide at run time (NeutrinoCore = 0x1bb8ed000 in 18A5351d). Pair with oslog=<VA>:<cap>.
-          IVM_OSLOG_DSO: "${{ contains(inputs.editor_probe, 'nu') && '@1bb8ed000' || '' }}"
+          # s48 4.0.176: CoreImage's own unified-log line is the only place that names why the
+          # editor's source kernels never compile ("Overriding function '%s' with precompiled
+          # one in default metallib" / the compile failure). '@<unslid mach header>' is resolved
+          # against the dsc slide at run time; CoreImage = 0x181cc5000 in 18A5351d.
+          IVM_OSLOG_DSO: "${{ contains(inputs.editor_probe, 'cimg') && '@181cc5000' || (contains(inputs.editor_probe, 'nu') && '@1bb8ed000' || '') }}"
           # IVM_OSLOG_N now rides on IVM_OSLOG ("<VA>:<cap>"), see the run step below."
         run: |
           set -uxo pipefail
