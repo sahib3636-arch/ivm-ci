@@ -176,6 +176,10 @@ jobs:
           # 'trapzero' filters to nil receivers (the ones that fault); plain 'trap' shows
           # every arrival, which is what names a caller that is only visible through lr.
           IVM_METAL_TRAP_ZERO: "${{ contains(inputs.editor_probe, 'trapzero') && '1' || '0' }}"
+          # 'nilsmall': print arrivals whose x0 is small enough to be a bogus pointer. The
+          # IOSurface crash frame is entered with x0=x1=x2=0, and the nil-only filter misses
+          # it whenever the receiver is a stale-but-nonzero value.
+          IVM_METAL_TRAP_X0LT: "${{ contains(inputs.editor_probe, 'nilsmall') && '1000' || '0' }}"
           IVM_METAL_TRAP_N: "4000"
           IVM_METAL_COMPLETION_DELIVER_WAIT: "${{ contains(inputs.editor_probe, 'deliver') && '1' || '0' }}"
           IVM_METAL_COMPILE_PROBE_PROFILE: "${{ inputs.live_library == 'special-gated' && format('{0}/metal-probe-profile.json', github.workspace) || '' }}"
