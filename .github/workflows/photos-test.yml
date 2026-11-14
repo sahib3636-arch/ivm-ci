@@ -56,7 +56,9 @@ jobs:
             echo "IVM_KTRACE_PCOMM=fffffff007e6761c,fffffff007e81e38,fffffff007e658e4,fffffff007efdbc8" >> $GITHUB_ENV
             echo "IVM_KTRACE_CODES=fffffff007a2c850" >> $GITHUB_ENV
             echo "IVM_KTRACE_COMMONLY=MobileSlideShow,Photo,backboardd,SpringBoard,Camera" >> $GITHUB_ENV
-            echo "IVM_KTRACE_NOBT=1" >> $GITHUB_ENV
+            # s48 4.0.172: the saved-register dump is what names the caller that passes a nil
+            # receiver into IOSurface +0x3b60; the 24-frame walk is capped to the faulting pcs.
+            echo "IVM_KTRACE_REGS=${IVM_KTRACE_REGS:-1}" >> $GITHUB_ENV
             echo "IVM_KTRACE_N=1000" >> $GITHUB_ENV
           elif [ "${{ inputs.ktrace }}" = "2" ]; then
             echo "IVM_KTRACE=fffffff007b569a0,fffffff007b57734,fffffff007b57de4" >> $GITHUB_ENV
