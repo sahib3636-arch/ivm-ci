@@ -114,6 +114,9 @@ jobs:
           # s48: drive the same controls the phone user drives, and score every step.
           CAM_EDITOR_FILTER: "${{ (contains(inputs.editor_probe, 'filter') || contains(inputs.editor_probe, 'full')) && '1' || '' }}"
           CAM_EDITOR_ADJUST: "${{ (contains(inputs.editor_probe, 'adjust') || contains(inputs.editor_probe, 'full')) && '1' || '' }}"
+          # s48 4.0.172: which gesture the adjust dials actually answer. A horizontal drag on a
+          # dial changes no pixel at all, so try every plausible shape in one session.
+          CAM_EDITOR_DIALSWEEP: "${{ contains(inputs.editor_probe, 'dialsweep') && '1' || '' }}"
           # s48: tap Done and score the photo detail view that comes back - that hand-off is where
           # the phone shows a blank photo, and no earlier probe ever committed an edit.
           CAM_EDITOR_COMMIT: "${{ contains(inputs.editor_probe, 'commit') && '1' || '' }}"
