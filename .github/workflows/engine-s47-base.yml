@@ -1,0 +1,97 @@
+# Source of truth for ivm-ci/.github/workflows/engine-s47-base.yml — the *known-good* s47 engine.
+#
+# Why this file exists: `engine.yml` takes INFERNO_COMMIT (the upstream Inferno SHA), so an ivm
+# branch cannot be selected through it, and `apk.yml` builds the right thing but names the artifact
+# `ivm-native`, which `explore.yml` cannot consume. This workflow is the missing piece: the s47
+# recipe (base 6541861f + the 66-patch list, ARMv8.2 + thin-LTO) built under the artifact name
+# `android-native-<variant>` that explore.yml expects.
+#
+# Verified 2026-11-18: the identical recipe built through apk.yml produced engine build
+# `84785ffbc28d`, which is the build id 4.0.147 shipped (REGRESSION-WINDOW-20261113.md §1).
+name: engine-s47-base
+on:
+  workflow_dispatch:
+    inputs:
+      variant:      { description: 'artifact suffix (android-native-<variant>)', default: 's47base' }
+      ivm_ref:      { description: 'ivm branch/tag/commit to build from', default: 'exp/metal-mttcg-perf-20261106' }
+      patches:      { description: 'IVM_PATCHES override (empty = the s47 list below)', default: '' }
+      pgo_art:      { description: 'artifact with pgo/*.profraw to merge + -fprofile-use (empty = none)', default: '' }
+      extra_cflags: { description: 'extra C flags appended to the s47 set', default: '' }
+      engine_env:   { description: 'K=V baked into the default engine env line (diagnostics only)', default: '' }
+permissions: { actions: read, contents: read }
+concurrency:
+  group: engine-s47-${{ inputs.variant }}
+  cancel-in-progress: false
+env:
+  INFERNO_COMMIT: 6541861f4d033a0de327b5ccc5180ebac20bf461
+  BASE_CFLAGS: -O2 -march=armv8.2-a+lse+rcpc+dotprod+fp16
+  # The 66 patches 4.0.147 shipped, in the order apk.yml applies them (DEFAULT_PATCHES).
+  S47_PATCHES: >-
+    panelhz android-perf fpslog hle-bilerp hle-nn inljc jcttbr0 fpixc fpixc_host fpzero fpden
+    nobti jcbits14 asidlog cflagsinline jclog gxfinline zvainline adpdirty tlbrange vtlb16
+    a13-ipi-replay haltpoll jcshared hle-lb hle-r3 hle-sob hle-zva hle-bq tbfollow tbfollow2
+    tbfollow3 tbfollow4 zdiscard jitdiscard tbarray ucdyn adpf-honest ispstub ktrace
+    metal-bridge-link monitor-watch-cleanup teardown-fastexit kexit cntfast nohardening tlbsz10
+    cpregcache panelwh shmfb paneladapt usb-ncm-net shmaudio rcu-idle-park dart-noreplay
+    boot-stability tlb-ldp-fast tlb-accounting-dirty jc-preserve gxf-sprr-fast msr-fast2
+    native-fp native-int ras ptw-tlbi-fast s24u-cores
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: host packages
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build patchelf python3-venv pkg-config cmake gcc && pipx install meson==1.7.0
+      - name: PGO profile
+        if: inputs.pgo_art != ''
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          set -e
+          W=$GITHUB_WORKSPACE/pgo-raw; rm -rf "$W"; mkdir -p "$W"
+          for name in ${{ inputs.pgo_art }}; do
+            id=$(curl -s -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$name&per_page=1" | jq -r '.artifacts[0].id // empty')
+            [ -n "$id" ] || { echo "::error::PGO artifact not found: $name"; exit 1; }
+            curl -sfL -H "Authorization: Bearer $GH_TOKEN" -o "p_$name.zip" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip"
+            mkdir -p "x_$name" && unzip -q -o "p_$name.zip" -d "x_$name"
+            cp -v $(find "x_$name" -name '*.profraw') "$W/" 2>/dev/null || true
+          done
+          total=$(find "$W" -name '*.profraw' | wc -l); echo "profraw files: $total"
+          if [ "$total" -eq 0 ]; then echo "::error::no .profraw in PGO artifacts"; exit 1; fi
+          PD=${ANDROID_NDK_HOME:-$ANDROID_NDK_LATEST_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-profdata
+          $PD --version | head -2
+          $PD merge -o "$GITHUB_WORKSPACE/ivm.profdata" $(find "$W" -name '*.profraw')
+          ls -la "$GITHUB_WORKSPACE/ivm.profdata"
+          echo "IVM_PROFDATA=$GITHUB_WORKSPACE/ivm.profdata" >> "$GITHUB_ENV"
+      - name: cross-build (s47 recipe)
+        working-directory: ivm-repo
+        env:
+          IVM_OPT_CFLAGS: '${{ env.BASE_CFLAGS }} ${{ inputs.extra_cflags }}'
+          IVM_MESON_EXTRA: '-Db_lto=true -Db_lto_mode=thin'
+          IVM_PATCHES: ${{ inputs.patches != '' && inputs.patches || env.S47_PATCHES }}
+        run: |
+          set -o pipefail
+          bash ivm/android/ci/build-inferno-android.sh 2>&1 | tee native.log
+          bash ivm/android/ci/build-metal-android.sh 2>&1 | tee -a native.log
+          # record what was actually built, next to the binary the A/B will run
+          ENG=work/out/jniLibs/arm64-v8a/libinferno.so
+          SHA=$(sha256sum "$ENG" | cut -d" " -f1)
+          IVM=$(git rev-parse HEAD)
+          INF=$(git -C work/Inferno rev-parse HEAD)
+          jq --arg s "$SHA" --arg i "$IVM" --arg f "$INF" --arg c "${IVM_OPT_CFLAGS}" \
+             ". + {engine_sha256:$s, ivm:$i, svn:$f, cflags:$c}" \
+             work/out/assets/qemu-data/engine.json > /tmp/e.json && mv /tmp/e.json work/out/assets/qemu-data/engine.json
+          cat work/out/assets/qemu-data/engine.json
+      - name: engine smoke test (real libinferno.so on qemu-user + Android 14 bionic)
+        working-directory: ivm-repo
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq qemu-user-static >/dev/null
+          bash ivm/android/ci/engine-smoke.sh work/out/jniLibs/arm64-v8a 2>&1 | tee work/out/engine-smoke.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-native-${{ inputs.variant }}
+          path: |
+            ivm-repo/work/out
+            ivm-repo/native.log
