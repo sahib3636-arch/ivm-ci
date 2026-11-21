@@ -24,7 +24,7 @@ jobs:
           ART: '${{ matrix.v.art }}'
           SMP: '${{ matrix.v.smp || 4 }}'
           RAM: '${{ matrix.v.ram || ''3G'' }}'
-          TB: '${{ matrix.v.tb || 2048 }}'   # s50/E10: 512 reached 90% of the TB cache; 2048 = +4.0% flip
+          TB: '${{ matrix.v.tb || 1024 }}'   # s50/E10: 1024 matches the phone (Prefs.DEFAULT_TB_MB); 512 was undersized
           MACHINE_EXTRA: '${{ matrix.v.machine }}'
           EXTRA_ARGS: '${{ matrix.v.extra }}'
           PERF: '${{ matrix.v.perf || ''off'' }}'
