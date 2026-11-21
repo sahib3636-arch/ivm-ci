@@ -18,6 +18,13 @@ on:
       ivm_ref:  { description: 'branch/tag of sahib3636-arch/ivm to build', default: 'perf/e64-pgo-20261016' }
       version_name: { description: 'versionName', default: '4.0.82' }
       version_code: { description: 'versionCode (must exceed the installed one)', default: '227' }
+      # s50: the phone reports its own installed versionCode; that floor is the ONLY thing that
+      # decides whether an upgrade installs. On 2026-11-21 the phone had dev.ivm.emu at
+      # versionCode 1014 (versionName 4.0.167) while the newest release asset carried 380, so a
+      # build numbered from the asset published as a DOWNGRADE and Android answered "App not
+      # installed". Read the floor from the device/bugreport, pass it here, and the job refuses to
+      # produce an APK below it. Bump this default whenever the phone's installed code changes.
+      min_version_code: { description: 'installed versionCode on the target phone; the build must EXCEED it', default: '1014' }
       patches:  { description: 'IVM_PATCHES override (empty = the list below)', default: '' }
 permissions: { contents: write }   # the public copy of the APK lives on a release in THIS repo
 concurrency:
@@ -179,6 +186,18 @@ jobs:
         with: { distribution: temurin, java-version: '17' }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: '8.14.3' }
+      - name: versionCode floor gate (an APK that cannot install is not a release)
+        run: |
+          set -e
+          FLOOR='${{ inputs.min_version_code }}'
+          WANT='${{ inputs.version_code }}'
+          echo "phone has versionCode $FLOOR; this build would ship $WANT"
+          if [ "$WANT" -le "$FLOOR" ]; then
+            echo "::error::versionCode $WANT does not exceed the installed $FLOOR - Android rejects this as a downgrade ('App not installed')."
+            echo "Bump version_code above $FLOOR (and raise min_version_code once the phone installs it)."
+            exit 1
+          fi
+          echo "OK: $WANT > $FLOOR"
       - name: assembleRelease
         working-directory: ${{ env.APP }}
         env:
@@ -204,6 +223,28 @@ jobs:
           test "$SIGNER" = "62a1fb139f573f102cf91f5ebd75ed9732490b8fd222023cdee3b246bf93b099" || {
             echo "SIGNING KEY CHANGED - refusing to publish an APK the phone cannot update"; exit 1; }
           echo "APK=$N" >> $GITHUB_ENV
+      - name: installability gate (what PackageManager actually checks)
+        run: |
+          set -e
+          APK="$APK"
+          BT=$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)
+          echo "=== manifest facts that decide whether this can install over the phone's copy ==="
+          AAPT2=$ANDROID_HOME/build-tools/$BT/aapt2
+          $AAPT2 dump badging "$APK" | head -5
+          PKG=$($AAPT2 dump badging "$APK" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+          CODE=$($AAPT2 dump badging "$APK" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p")
+          test -n "$PKG" || { echo "cannot read package name"; exit 1; }
+          test -n "$CODE" || { echo "cannot read versionCode"; exit 1; }
+          echo "package=$PKG versionCode=$CODE"
+          # Hard failure conditions for the phone this is built for:
+          test "$PKG" = "dev.ivm.emu" || { echo "::error::package changed to $PKG - cannot update the installed app"; exit 1; }
+          test "$CODE" -gt "${{ inputs.min_version_code }}" || { echo "::error::versionCode $CODE does not exceed installed ${{ inputs.min_version_code }}"; exit 1; }
+          # Every native lib the engine needs must be present for arm64 (the phone is arm64-v8a only).
+          for L in libinferno libivm_metal_ffi libivm_vk_probe; do
+            unzip -l "$APK" | grep -q "lib/arm64-v8a/$L.so" || { echo "::error::missing lib/arm64-v8a/$L.so"; exit 1; }
+          done
+          unzip -l "$APK" | grep -q "lib/x86_64" && { echo "::error::x86_64 libs leaked into a release APK"; exit 1; } || true
+          echo "=== installability gate OK ==="
       - uses: actions/upload-artifact@v4
         continue-on-error: true
         with: { name: ivm-apk, path: '${{ env.APK }}' }
@@ -247,3 +288,4 @@ jobs:
           [ -z "$OLDID" ] || curl -s "${PH[@]}" -X DELETE "$PUB/$PID/assets/$OLDID"
           curl -s -X POST "${PH[@]}" -H "Content-Type: application/vnd.android.package-archive" \
               --data-binary @"$APK" "https://uploads.github.com/repos/${{ github.repository }}/releases/$PID/assets?name=$(basename $APK)" | head -c 200; echo
+
