@@ -24,7 +24,7 @@ on:
       # build numbered from the asset published as a DOWNGRADE and Android answered "App not
       # installed". Read the floor from the device/bugreport, pass it here, and the job refuses to
       # produce an APK below it. Bump this default whenever the phone's installed code changes.
-      min_version_code: { description: 'installed versionCode on the target phone; the build must EXCEED it', default: '1015' }
+      min_version_code: { description: 'installed versionCode on the target phone; the build must EXCEED it', default: '1016' }
       patches:  { description: 'IVM_PATCHES override (empty = the list below)', default: '' }
 permissions: { contents: write }   # the public copy of the APK lives on a release in THIS repo
 concurrency:
@@ -38,7 +38,7 @@ env:
   # compiled with ARMv8.2-A LSE + RCPC + DotProd + FP16 hardware instructions.
   DEFAULT_PATCHES: >-
     panelhz android-perf fpslog hle-bilerp hle-nn inljc jcttbr0 fpixc fpixc_host fpzero fpden
-    nobti jcbits16 asidlog cflagsinline jclog gxfinline zvainline adpdirty tlbrange vtlb16
+    nobti jcbits14 asidlog cflagsinline jclog gxfinline zvainline adpdirty tlbrange vtlb16
     a13-ipi-replay haltpoll jcshared hle-lb hle-r3 hle-sob hle-zva hle-bq tbfollow tbfollow2
     tbfollow3 tbfollow4 zdiscard jitdiscard tbarray ucdyn adpf-honest ispstub ktrace metal-bridge-link monitor-watch-cleanup teardown-fastexit
     kexit cntfast nohardening tlbsz10 cpregcache panelwh shmfb paneladapt usb-ncm-net shmaudio
