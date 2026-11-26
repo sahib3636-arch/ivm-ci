@@ -24,7 +24,7 @@ on:
       # build numbered from the asset published as a DOWNGRADE and Android answered "App not
       # installed". Read the floor from the device/bugreport, pass it here, and the job refuses to
       # produce an APK below it. Bump this default whenever the phone's installed code changes.
-      min_version_code: { description: 'installed versionCode on the target phone; the build must EXCEED it', default: '1016' }
+      min_version_code: { description: 'installed versionCode on the target phone; the build must EXCEED it', default: '1017' }
       patches:  { description: 'IVM_PATCHES override (empty = the list below)', default: '' }
 permissions: { contents: write }   # the public copy of the APK lives on a release in THIS repo
 concurrency:
@@ -41,7 +41,7 @@ env:
     nobti jcbits14 asidlog cflagsinline jclog gxfinline zvainline adpdirty tlbrange vtlb16
     a13-ipi-replay haltpoll jcshared hle-lb hle-r3 hle-sob hle-zva hle-bq tbfollow tbfollow2
     tbfollow3 tbfollow4 zdiscard jitdiscard tbarray ucdyn adpf-honest ispstub ktrace metal-bridge-link monitor-watch-cleanup teardown-fastexit
-    kexit cntfast nohardening tlbsz10 cpregcache panelwh shmfb paneladapt usb-ncm-net shmaudio
+    kexit cntfast nohardening tlbsz10 cpregcache panelwh shmfb usb-ncm-net shmaudio
     rcu-idle-park dart-noreplay boot-stability tlb-ldp-fast tlb-accounting-dirty jc-preserve gxf-sprr-fast msr-fast2 native-fp native-int ras
     ptw-tlbi-fast s24u-cores
 jobs:
@@ -51,6 +51,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
+      - name: Fingerprint selected engine patches
+        id: patch-recipe
+        env:
+          SELECTED_PATCHES: ${{ inputs.patches != '' && inputs.patches || env.DEFAULT_PATCHES }}
+        run: echo "digest=$(printf '%s' "$SELECTED_PATCHES" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - id: cache
         uses: actions/cache@v4
         with:
@@ -59,10 +64,10 @@ jobs:
           # out ivm/inferno/patches/exp/** — where shmfb, panelhz, ispstub, ucdyn and most of the real
           # work live — so a patch change restored a stale binary and the "fix" never ran on the phone
           # (4.0.83 and 4.0.85 restored the same f78207cb… both times). It also did not include this
-          # workflow, so changing DEFAULT_PATCHES kept the old engine too. Hash the lot.
-          # 'custom' keeps a one-off patch list (inputs.patches) out of the default key: an engine built
-          # for an experiment must never be the engine a normal build restores.
-          key: android-native-s47-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/**', 'ivm-repo/ivm/lab/metal_cpu/**', 'ivm-repo/ivm/lab/metal_ffi/**', 'ivm-repo/ivm/lab/metal_ffi_runtime/**', '.github/workflows/apk.yml') }}-${{ inputs.patches != '' && 'custom' || 'default' }}
+          # workflow, so changing DEFAULT_PATCHES kept the old engine too. Hash sources and include
+          # the CI commit: this job checks out only ivm-repo, so the workflow file may not exist locally.
+          # The digest includes the exact selected patch list; distinct custom recipes never share a key.
+          key: android-native-s47-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/**', 'ivm-repo/ivm/lab/metal_cpu/**', 'ivm-repo/ivm/lab/metal_ffi/**', 'ivm-repo/ivm/lab/metal_ffi_runtime/**', '.github/workflows/apk.yml') }}-${{ github.sha }}-${{ steps.patch-recipe.outputs.digest }}
       - name: host packages
         if: steps.cache.outputs.cache-hit != 'true'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build patchelf python3-venv pkg-config cmake gcc && pipx install meson==1.7.0
@@ -149,6 +154,11 @@ jobs:
         with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
       # The engine comes from the actions cache (the key the native job saved), not from an
       # artifact: artifact storage is quota-limited and a quota miss must not break the APK.
+      - name: Fingerprint selected engine patches
+        id: patch-recipe
+        env:
+          SELECTED_PATCHES: ${{ inputs.patches != '' && inputs.patches || env.DEFAULT_PATCHES }}
+        run: echo "digest=$(printf '%s' "$SELECTED_PATCHES" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v4
         id: engine-cache
         with:
@@ -157,10 +167,10 @@ jobs:
           # out ivm/inferno/patches/exp/** — where shmfb, panelhz, ispstub, ucdyn and most of the real
           # work live — so a patch change restored a stale binary and the "fix" never ran on the phone
           # (4.0.83 and 4.0.85 restored the same f78207cb… both times). It also did not include this
-          # workflow, so changing DEFAULT_PATCHES kept the old engine too. Hash the lot.
-          # 'custom' keeps a one-off patch list (inputs.patches) out of the default key: an engine built
-          # for an experiment must never be the engine a normal build restores.
-          key: android-native-s47-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/**', 'ivm-repo/ivm/lab/metal_cpu/**', 'ivm-repo/ivm/lab/metal_ffi/**', 'ivm-repo/ivm/lab/metal_ffi_runtime/**', '.github/workflows/apk.yml') }}-${{ inputs.patches != '' && 'custom' || 'default' }}
+          # workflow, so changing DEFAULT_PATCHES kept the old engine too. Hash sources and include
+          # the CI commit: this job checks out only ivm-repo, so the workflow file may not exist locally.
+          # The digest includes the exact selected patch list; distinct custom recipes never share a key.
+          key: android-native-s47-${{ hashFiles('ivm-repo/ivm/android/ci/**', 'ivm-repo/ivm/inferno/**', 'ivm-repo/ivm/lab/metal_cpu/**', 'ivm-repo/ivm/lab/metal_ffi/**', 'ivm-repo/ivm/lab/metal_ffi_runtime/**', '.github/workflows/apk.yml') }}-${{ github.sha }}-${{ steps.patch-recipe.outputs.digest }}
           # s48: the native job saves its cache in a post step, i.e. after it has built. Any file the
           # build writes inside a hashed path changes the save key, so the apk job (which hashes a
           # pristine tree before building) can legitimately miss it — run 42689102750 died that way.
