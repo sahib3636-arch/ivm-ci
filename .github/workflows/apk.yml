@@ -26,7 +26,10 @@ on:
       # produce an APK below it. Bump this default whenever the phone's installed code changes.
       min_version_code: { description: 'installed versionCode on the target phone; the build must EXCEED it', default: '1017' }
       patches:  { description: 'IVM_PATCHES override (empty = the list below)', default: '' }
-permissions: { contents: write }   # the public copy of the APK lives on a release in THIS repo
+      tested_engine_run: { description: 'Optional CI run ID of an exact tested native engine artifact', default: '' }
+      tested_engine_artifact: { description: 'Exact artifact name in tested engine run', default: '' }
+      tested_engine_sha256: { description: 'Expected SHA256 of tested libinferno.so', default: '' }
+permissions: { contents: write, actions: read }   # the public copy of the APK lives on a release in THIS repo
 concurrency:
   group: apk-${{ github.ref }}-${{ inputs.version_name }}
   cancel-in-progress: false
@@ -57,6 +60,7 @@ jobs:
           SELECTED_PATCHES: ${{ inputs.patches != '' && inputs.patches || env.DEFAULT_PATCHES }}
         run: echo "digest=$(printf '%s' "$SELECTED_PATCHES" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - id: cache
+        if: inputs.tested_engine_run == ''
         uses: actions/cache@v4
         with:
           path: ivm-repo/work/out
@@ -92,6 +96,44 @@ jobs:
         run: |
           bash ivm/android/ci/build-inferno-android.sh 2>&1 | tee native.log; test "${PIPESTATUS[0]}" = 0
           bash ivm/android/ci/build-metal-android.sh 2>&1 | tee -a native.log; test "${PIPESTATUS[0]}" = 0
+      - name: validate tested-engine inputs
+        if: inputs.tested_engine_run != ''
+        env:
+          RUN: ${{ inputs.tested_engine_run }}
+          ART: ${{ inputs.tested_engine_artifact }}
+          EXPECTED: ${{ inputs.tested_engine_sha256 }}
+        run: |
+          [[ "$RUN" =~ ^[0-9]+$ && "$ART" =~ ^android-native-[a-zA-Z0-9_-]+$ && "$EXPECTED" =~ ^[0-9a-f]{64}$ ]] || { echo '::error::invalid tested engine inputs'; exit 1; }
+      - name: fetch exact tested engine
+        if: inputs.tested_engine_run != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.tested_engine_artifact }}
+          run-id: ${{ inputs.tested_engine_run }}
+          github-token: ${{ github.token }}
+          path: tested-native
+      - name: pin tested native libraries and patch recipe
+        if: inputs.tested_engine_run != ''
+        env:
+          EXPECTED: ${{ inputs.tested_engine_sha256 }}
+          SELECTED_PATCHES: ${{ inputs.patches != '' && inputs.patches || env.DEFAULT_PATCHES }}
+        run: |
+          set -euo pipefail
+          DIR=tested-native/work/out
+          test -f "$DIR/jniLibs/arm64-v8a/libinferno.so"
+          echo "$EXPECTED  $DIR/jniLibs/arm64-v8a/libinferno.so" | sha256sum -c -
+          python3 - "$DIR/assets/qemu-data/engine.json" "$SELECTED_PATCHES" <<'PYMETA'
+          import json,sys
+          actual=json.load(open(sys.argv[1]))['patches'].split()
+          if actual != sys.argv[2].split(): raise SystemExit('tested engine patch list does not match selected recipe')
+          PYMETA
+          # Preserve independently built Metal bridge libraries, replace every engine
+          # dependency with its exact tested artifact counterpart.
+          (cd "$DIR/jniLibs/arm64-v8a" && sha256sum *.so) > ivm-repo/work/out/tested-libraries.sha256
+          cp -a "$DIR/jniLibs/arm64-v8a/." ivm-repo/work/out/jniLibs/arm64-v8a/
+          (cd ivm-repo/work/out/jniLibs/arm64-v8a && sha256sum -c ../../tested-libraries.sha256)
+          rm -rf ivm-repo/work/out/assets/qemu-data
+          cp -a "$DIR/assets/qemu-data" ivm-repo/work/out/assets/
       - name: engine smoke test (real libinferno.so on qemu-user + Android 14 arm64 bionic)
         if: steps.cache.outputs.cache-hit != 'true'
         working-directory: ivm-repo
@@ -160,6 +202,7 @@ jobs:
           SELECTED_PATCHES: ${{ inputs.patches != '' && inputs.patches || env.DEFAULT_PATCHES }}
         run: echo "digest=$(printf '%s' "$SELECTED_PATCHES" | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v4
+        if: inputs.tested_engine_run == ''
         id: engine-cache
         with:
           path: ivm-repo/work/out
@@ -227,6 +270,9 @@ jobs:
           IVM_VERSION_NAME: ${{ inputs.version_name }}
         run: gradle --no-daemon -Dorg.gradle.jvmargs=-Xmx3g assembleRelease
       - name: verify signature + engine
+        env:
+          TESTED_RUN: ${{ inputs.tested_engine_run }}
+          TESTED_SHA: ${{ inputs.tested_engine_sha256 }}
         run: |
           set -e
           A=$(find $APP/app/build/outputs/apk/release -name '*.apk' | head -1); N=/tmp/iVM-${{ inputs.version_name }}.apk; cp "$A" "$N"
@@ -244,6 +290,14 @@ jobs:
           echo "signer sha256: $SIGNER"
           test "$SIGNER" = "62a1fb139f573f102cf91f5ebd75ed9732490b8fd222023cdee3b246bf93b099" || {
             echo "SIGNING KEY CHANGED - refusing to publish an APK the phone cannot update"; exit 1; }
+          if [ -n "$TESTED_RUN" ]; then
+            ACTUAL=$(unzip -p "$N" lib/arm64-v8a/libinferno.so | sha256sum | cut -d' ' -f1)
+            test "$ACTUAL" = "$TESTED_SHA" || { echo '::error::APK engine differs from tested binary'; exit 1; }
+            while read -r HASH LIB; do
+              ACTUAL=$(unzip -p "$N" "lib/arm64-v8a/$LIB" | sha256sum | cut -d' ' -f1)
+              test "$ACTUAL" = "$HASH" || { echo "::error::APK library differs from tested binary: $LIB"; exit 1; }
+            done < ivm-repo/work/out/tested-libraries.sha256
+          fi
           echo "APK=$N" >> $GITHUB_ENV
       - name: installability gate (what PackageManager actually checks)
         run: |
