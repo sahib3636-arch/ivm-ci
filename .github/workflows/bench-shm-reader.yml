@@ -1,0 +1,25 @@
+name: Shared framebuffer bench reader tests
+on:
+  workflow_dispatch:
+    inputs:
+      ivm_ref: { description: 'iVM source commit', required: true }
+permissions: { contents: read }
+jobs:
+  test:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: sahib3636-arch/ivm
+          token: ${{ secrets.IVM_PAT }}
+          ref: ${{ inputs.ivm_ref }}
+          path: ivm-repo
+          persist-credentials: false
+          lfs: false
+      - name: Test sequence checks on ARM64
+        working-directory: ivm-repo
+        run: |
+          set -euo pipefail
+          uname -m
+          python3 -m unittest discover -s ivm/bench/tests -p 'test_shm_reader.py' -v
