@@ -41,7 +41,7 @@ env:
     nobti jcbits14 asidlog cflagsinline jclog gxfinline zvainline adpdirty tlbrange vtlb16
     a13-ipi-replay haltpoll jcshared hle-lb hle-r3 hle-sob hle-zva hle-bq tbfollow tbfollow2
     tbfollow3 tbfollow4 zdiscard jitdiscard tbarray ucdyn adpf-honest ispstub ktrace metal-bridge-link monitor-watch-cleanup teardown-fastexit
-    kexit cntfast nohardening tlbsz10 cpregcache panelwh shmfb usb-ncm-net shmaudio
+    kexit cntfast nohardening tlbsz10 cpregcache panelwh shmfb paneladapt usb-ncm-net shmaudio
     rcu-idle-park dart-noreplay boot-stability tlb-ldp-fast tlb-accounting-dirty jc-preserve gxf-sprr-fast msr-fast2 native-fp native-int ras
     ptw-tlbi-fast s24u-cores
 jobs:
