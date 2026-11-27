@@ -186,6 +186,18 @@ jobs:
           ls -la ivm-repo/work/out/jniLibs/arm64-v8a
           test -f ivm-repo/work/out/jniLibs/arm64-v8a/libinferno.so
           test -f ivm-repo/work/out/jniLibs/arm64-v8a/libivm_metal_ffi.so
+      - name: experimental UI and engine recipe must agree
+        env:
+          SELECTED_PATCHES: ${{ inputs.patches != '' && inputs.patches || env.DEFAULT_PATCHES }}
+        run: |
+          set -euo pipefail
+          SRC="$APP/app/src/main/java/dev/ivm/emu/Inferno.kt"
+          if grep -q '"IVM_TOUCH_IDLE"' "$SRC"; then
+            case " $SELECTED_PATCHES " in
+              *" paneltouchidle "*) echo "touch-idle UI has its engine patch" ;;
+              *) echo '::error::touch-idle UI requires the paneltouchidle engine patch'; exit 1 ;;
+            esac
+          fi
       - name: stage engines
         run: |
           M=$APP/app/src/main; J=$M/jniLibs/arm64-v8a; mkdir -p $J $M/assets
