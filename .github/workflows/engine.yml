@@ -10,7 +10,7 @@ on:
       ldflags: { description: 'extra link flags', default: '' }
       meson: { description: 'extra meson options', default: '' }
       patches: { description: 'space-separated ivm/inferno/patches/exp/<name>.py to apply', default: '' }
-      pgo_art: { description: 'artifact with pgo/*.profraw to merge + -fprofile-use (empty = none)', default: '' }
+      pgo_art: { description: 'artifact with pgo/*.profraw, or embedded-e64 for APK profile (empty = none)', default: '' }
       ivm_ref: { default: 'main' }
 permissions: { actions: read, contents: read }
 jobs:
@@ -22,8 +22,20 @@ jobs:
         with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
       - name: host packages
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build python3-venv pkg-config cmake gcc && pipx install meson==1.7.0
+      - name: PGO profile from APK recipe
+        if: inputs.pgo_art == 'embedded-e64'
+        run: |
+          set -euo pipefail
+          W="$GITHUB_WORKSPACE/pgo-embedded"; mkdir -p "$W"
+          unzip -q ivm-repo/ivm/android/ci/pgo/explore-e64train.zip -d "$W"
+          PD=${ANDROID_NDK_HOME:-$ANDROID_NDK_LATEST_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-profdata
+          $PD --version | head -2
+          mapfile -t PROFILES < <(find "$W" -name '*.profraw' -type f)
+          [ "${#PROFILES[@]}" -gt 0 ] || { echo '::error::embedded profile is empty'; exit 1; }
+          $PD merge -o "$GITHUB_WORKSPACE/ivm.profdata" "${PROFILES[@]}"
+          echo "IVM_PROFDATA=$GITHUB_WORKSPACE/ivm.profdata" >> "$GITHUB_ENV"
       - name: PGO profile
-        if: inputs.pgo_art != ''
+        if: inputs.pgo_art != '' && inputs.pgo_art != 'embedded-e64'
         env: { GH_TOKEN: '${{ github.token }}', ART: '${{ inputs.pgo_art }}' }
         run: |
           set -euo pipefail
