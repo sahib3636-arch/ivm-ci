@@ -27,7 +27,11 @@ jobs:
             "$C" -std=gnu11 -Wall -Wextra -Werror -fPIC -Dmain=ivm_native_probe_main -c "$SRC" -o probe-$arch.o
             "$C" -std=gnu11 -Wall -Wextra -Werror -fPIC -shared probe-$arch.o "$ROOT/jni.c" -o "$ROOT/app/src/main/jniLibs/$arch/libivm_native_probe.so"
           done
+          "$TC/aarch64-linux-android34-clang" -std=gnu11 -O2 -Wall -Wextra -Werror "$SRC" -o "$GITHUB_WORKSPACE/native-arm64"
+          (cd "$GITHUB_WORKSPACE" && sha256sum native-arm64 > native-arm64.sha256)
           cd "$ROOT"; gradle --no-daemon -Dorg.gradle.jvmargs=-Xmx2g :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        with: { name: native-android-arm64-executable, path: 'native-arm64*', retention-days: 7 }
       - name: Allow KVM for emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -47,3 +51,30 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: android-native-el0-log, path: native-probe.log, if-no-files-found: warn, retention-days: 7 }
+  arm-bionic:
+    needs: android-probe
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: native-android-arm64-executable, path: binaries }
+      - name: Run AArch64 Android-bionic executable on ARM Linux
+        run: |
+          set -euo pipefail
+          (cd binaries && sha256sum -c native-arm64.sha256)
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq jq curl
+          ROOT="$RUNNER_TEMP/android-root"; mkdir -p "$ROOT"
+          TK=$(curl -fsS 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:redroid/redroid:pull' | jq -r .token)
+          L=$(curl -fsS -H "Authorization: Bearer $TK" -H 'Accept: application/vnd.oci.image.manifest.v1+json' \
+            'https://registry-1.docker.io/v2/redroid/redroid/manifests/sha256:d9ef29d08c5e7ff6d4771a9894d4df47725d9a733dc251c47bc40782cc86359a' | jq -er '.layers[0].digest')
+          curl -fsSL -H "Authorization: Bearer $TK" "https://registry-1.docker.io/v2/redroid/redroid/blobs/$L" \
+            | sudo tar xz -C "$ROOT" --wildcards 'system/bin/linker64' 'system/lib64/*' 'system/apex/com.android.runtime*'
+          sudo mkdir -p "$ROOT/apex"
+          sudo mv "$ROOT/system/apex/com.android.runtime" "$ROOT/apex/"
+          sudo cp binaries/native-arm64 "$ROOT/probe"; sudo chmod 755 "$ROOT/probe"
+          sudo chroot --userspec=2000:2000 "$ROOT" /system/bin/linker64 /probe | tee arm-bionic.log
+          grep -q 'PASS host-native mapping, SIGSYS trap, shared alias and permission fault' arm-bionic.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: native-arm-bionic-log, path: arm-bionic.log, if-no-files-found: warn, retention-days: 7 }
