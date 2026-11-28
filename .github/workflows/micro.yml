@@ -15,7 +15,7 @@ jobs:
         with: { repository: sahib3636-arch/ivm, token: '${{ secrets.IVM_PAT }}', ref: '${{ inputs.ivm_ref }}', path: ivm-repo, lfs: false }
       - name: run
         working-directory: ivm-repo
-        run: lscpu | head -20; bash "${{ inputs.script }}" 2>&1 | tee micro.log
+        run: set -o pipefail; lscpu | sed -n '1,20p'; bash "${{ inputs.script }}" 2>&1 | tee micro.log
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: micro-log, path: ivm-repo/micro.log }
